@@ -31,19 +31,16 @@ class RAGService:
     def _setup_qa_chain(self):
         """Set up the QA chain with custom prompt"""
         prompt_template = """You are a California residential construction expert AI assistant. You have access to a database of construction projects with costs and timelines.
-IMPORTANT GEOGRAPHIC RULES:
-1. San Diego and Los Angeles are cities in California - you should provide estimates for these locations
-2. Cities within San Diego County (like La Jolla, Encinitas, Del Mar, Carlsbad) count as San Diego
-3. Cities within Los Angeles County count as Los Angeles
-4. For other California cities, provide general California estimates
-5. For non-California locations, politely explain you only serve California
+IMPORTANT CONVERSATION CONTEXT:
+Previous conversation:
+{chat_history}
+Current question: {question}
 Context from database: {context}
-Question: {question}
-Based on the context above, provide specific cost estimates and timelines. Use the actual numbers from the database.
+Based on the conversation and database context above, provide a helpful answer. If asked about timelines, provide specific timeline estimates in weeks or months. For cost questions, provide specific dollar amounts.
 Answer:"""
         prompt = PromptTemplate(
             template=prompt_template,
-            input_variables=["context", "question"]
+            input_variables=["context", "question", "chat_history"]
         )
         self.qa_chain = RetrievalQA.from_chain_type(
             llm=self.llm,
@@ -56,8 +53,18 @@ Answer:"""
     async def get_chat_response(self, query: str, chat_history: List[Dict[str, str]]) -> Dict[str, Any]:
         """Get a response for chat interface"""
         try:
-            # Use invoke instead of run
-            response = self.qa_chain.invoke({"query": query})
+            # Format chat history for the prompt
+            history_text = ""
+            if chat_history:
+                for i, msg in enumerate(chat_history[-4:]):  # Include last 4 messages for context
+                    if i < len(chat_history) - 1:  # Don't include the current message
+                        role = "User" if msg["role"] == "user" else "Assistant"
+                        history_text += f"{role}: {msg['content']}\n"
+            # Include chat history in the query
+            response = self.qa_chain.invoke({
+                "query": query,
+                "chat_history": history_text
+            })
             # Extract the result from the response
             if isinstance(response, dict) and "result" in response:
                 message = response["result"]
@@ -83,7 +90,7 @@ Answer:"""
             Square footage: {project_details.get('square_footage')}
             Use the specific cost data from the database for this location and project type.
             """
-            response = self.qa_chain.invoke({"query": enhanced_query})
+            response = self.qa_chain.invoke({"query": enhanced_query, "chat_history": ""})
             # Extract the result
             if isinstance(response, dict) and "result" in response:
                 result = response["result"]
