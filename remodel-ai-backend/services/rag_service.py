@@ -14,23 +14,15 @@ class RAGService:
         self.embeddings = OpenAIEmbeddings(
             openai_api_key=settings.openai_api_key
         )
-        # Initialize Pinecone
-        self.pc = PineconeClient(api_key=settings.pinecone_api_key)
-        # Check if index exists
-        try:
-            self.index = self.pc.Index(settings.pinecone_index)
-        except Exception as e:
-            logger.error(f"Error connecting to Pinecone index: {str(e)}")
-            raise
         # Initialize LLM
         self.llm = ChatOpenAI(
             model=settings.openai_model,
             temperature=0.1,
             openai_api_key=settings.openai_api_key
         )
-        # Create vector store - using the direct initialization method
-        self.vectorstore = PineconeVectorStore(
-            index=self.index,
+        # Create vector store using from_existing_index method
+        self.vectorstore = PineconeVectorStore.from_existing_index(
+            index_name=settings.pinecone_index,
             embedding=self.embeddings,
             text_key="text"
         )
