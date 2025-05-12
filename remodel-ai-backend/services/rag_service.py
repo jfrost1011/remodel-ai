@@ -1,8 +1,8 @@
 import os
 from typing import List, Dict, Any, Optional
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Pinecone
-from langchain.chat_models import ChatOpenAI
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import Pinecone
+from langchain_openai import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from pinecone import Pinecone as PineconeClient

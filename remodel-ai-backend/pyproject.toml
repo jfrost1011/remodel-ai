@@ -10,7 +10,7 @@ dependencies = [
     "pydantic-settings",
     "python-dotenv",
     "openai",
-    "pinecone-client",
+    "pinecone",
     "pandas",
     "numpy",
     "reportlab",
