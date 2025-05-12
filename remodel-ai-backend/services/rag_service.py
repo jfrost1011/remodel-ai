@@ -9,6 +9,8 @@ import logging
 logger = logging.getLogger(__name__)
 class RAGService:
     def __init__(self):
+        # Set environment variable for Pinecone
+        os.environ["PINECONE_API_KEY"] = settings.pinecone_api_key
         # Initialize embeddings
         self.embeddings = OpenAIEmbeddings(
             openai_api_key=settings.openai_api_key
