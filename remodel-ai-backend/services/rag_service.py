@@ -1,17 +1,14 @@
 import os
 from typing import List, Dict, Any, Optional
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_pinecone import PineconeVectorStore
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from pinecone import Pinecone
 from config import settings
 import logging
 logger = logging.getLogger(__name__)
 class RAGService:
     def __init__(self):
-        # Initialize Pinecone
-        pc = Pinecone(api_key=settings.pinecone_api_key)
-        index = pc.Index(settings.pinecone_index)
         # Initialize embeddings
         self.embeddings = OpenAIEmbeddings(
             openai_api_key=settings.openai_api_key
@@ -22,13 +19,10 @@ class RAGService:
             temperature=0.1,
             openai_api_key=settings.openai_api_key
         )
-        # Import here to avoid circular imports
-        from langchain_community.vectorstores import Pinecone as PineconeVectorStore
-        # Create vector store using namespace
-        self.vectorstore = PineconeVectorStore(
-            index=index,
-            embedding_function=self.embeddings.embed_query,
-            text_key="text"
+        # Create vector store using the modern PineconeVectorStore
+        self.vectorstore = PineconeVectorStore.from_existing_index(
+            index_name=settings.pinecone_index,
+            embedding=self.embeddings
         )
         # Create QA chain
         self._setup_qa_chain()
@@ -60,7 +54,7 @@ Answer:"""
     async def get_chat_response(self, query: str, chat_history: List[Dict[str, str]]) -> Dict[str, Any]:
         """Get a response for chat interface"""
         try:
-            # Use invoke instead of run to avoid deprecation warning
+            # Use invoke instead of run
             response = self.qa_chain.invoke({"query": query})
             # Extract the result from the response
             if isinstance(response, dict) and "result" in response:
