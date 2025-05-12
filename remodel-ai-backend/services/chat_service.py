@@ -9,16 +9,18 @@ class ChatService:
     async def process_message(self, content: str, role: str, session_id: str) -> Dict[str, Any]:
         """Process a chat message and return response"""
         try:
-            # First check if it's construction-related
-            if not self._is_construction_related(content):
+            # Get or create session
+            if session_id not in chat_sessions:
+                chat_sessions[session_id] = []
+            # Check if this is a follow-up question by looking at conversation history
+            has_construction_context = self._has_construction_context(session_id)
+            # Validate query scope - if it's a follow-up to a construction conversation, allow it
+            if not has_construction_context and not self._is_construction_related(content):
                 return {
                     "message": "I'm specifically trained in California residential construction. I can help with remodeling, additions, ADUs, permits, costs, and financing. What construction questions can I answer for you?",
                     "type": "text",
                     "metadata": {"filtered": True}
                 }
-            # Get or create session
-            if session_id not in chat_sessions:
-                chat_sessions[session_id] = []
             # Add user message to history
             chat_sessions[session_id].append({
                 "role": role,
@@ -49,7 +51,28 @@ class ChatService:
             'bathroom', 'zoning', 'finance', 'loan', 'estimate', 'project',
             'floor', 'roof', 'foundation', 'electrical', 'plumbing',
             'square', 'footage', 'sq ft', 'budget', 'timeline', 'price',
-            'how much', 'quote', 'expense'
+            'how much', 'quote', 'expense', 'long', 'duration', 'time',
+            'when', 'schedule', 'weeks', 'months', 'days'
         ]
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
+    def _has_construction_context(self, session_id: str) -> bool:
+        """Check if the conversation has construction context"""
+        if session_id not in chat_sessions:
+            return False
+        # Look at the last few messages to see if they're construction-related
+        history = chat_sessions[session_id]
+        if not history:
+            return False
+        # Check the last 3 messages for construction context
+        recent_messages = history[-3:] if len(history) >= 3 else history
+        for msg in recent_messages:
+            if msg["role"] == "user" and self._is_construction_related(msg["content"]):
+                return True
+            # Also check if assistant mentioned construction terms
+            if msg["role"] == "assistant" and any(
+                term in msg["content"].lower() 
+                for term in ['remodel', 'construction', 'cost', 'estimate', 'kitchen', 'bathroom']
+            ):
+                return True
+        return False
