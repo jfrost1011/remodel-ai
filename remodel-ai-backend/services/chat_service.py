@@ -62,36 +62,22 @@ class ChatService:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
     def _extract_location(self, query: str) -> Optional[str]:
-        """Extract location from query - corrected version"""
+        """Extract location from query - fixed version that preserves full city names"""
         query_lower = query.lower()
-        # California cities - these should NOT be flagged as unavailable
-        ca_cities = [
-            'san diego', 'los angeles', 'san francisco', 'sacramento', 
-            'oakland', 'san jose', 'fresno', 'long beach', 'riverside',
-            'santa ana', 'anaheim', 'bakersfield', 'irvine', 'modesto'
-        ]
-        # Non-California cities that we should flag
-        non_ca_cities = [
+        # Non-California locations to flag (full names)
+        non_ca_locations = [
             'phoenix', 'las vegas', 'denver', 'seattle', 'portland',
             'austin', 'dallas', 'houston', 'miami', 'atlanta',
-            'chicago', 'new york', 'boston', 'philadelphia'
-        ]
-        # First check if any CA city is mentioned - if so, don't flag as unavailable
-        for ca_city in ca_cities:
-            if ca_city in query_lower:
-                return None  # Return None so it's not flagged as non-CA
-        # Then check for non-CA cities
-        for non_ca_city in non_ca_cities:
-            if non_ca_city in query_lower:
-                return non_ca_city.title()
-        # Check for states (excluding California)
-        non_ca_states = [
+            'chicago', 'new york', 'boston', 'philadelphia',
             'arizona', 'nevada', 'oregon', 'washington', 'texas',
-            'florida', 'new york', 'colorado', 'utah', 'idaho'
+            'florida', 'colorado', 'utah', 'idaho'
         ]
-        for state in non_ca_states:
-            if f" {state}" in query_lower or f"in {state}" in query_lower:
-                return state.title()
+        # Check for non-CA locations using full matching
+        for location in non_ca_locations:
+            # Use word boundaries to match full location names
+            pattern = r'\b' + re.escape(location) + r'\b'
+            if re.search(pattern, query_lower):
+                return location.title()
         return None
     def _is_california_location(self, location: str) -> bool:
         """Check if location is in California"""
