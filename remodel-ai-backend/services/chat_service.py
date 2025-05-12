@@ -9,13 +9,18 @@ class ChatService:
     async def process_message(self, content: str, role: str, session_id: str) -> Dict[str, Any]:
         """Process a chat message and return response"""
         try:
+            # Debug logging
+            logger.info(f"Processing message: '{content}' for session: {session_id}")
             # Get or create session
             if session_id not in chat_sessions:
                 chat_sessions[session_id] = []
+                logger.info(f"Created new session: {session_id}")
             # Check if we have an existing conversation
             has_history = len(chat_sessions[session_id]) > 0
+            logger.info(f"Session has history: {has_history}, Length: {len(chat_sessions[session_id])}")
             # Only check construction-related for NEW conversations
             if not has_history and not self._is_construction_related(content):
+                logger.info("Filtering as non-construction message")
                 return {
                     "message": "I'm specifically trained in California residential construction. I can help with remodeling, additions, ADUs, permits, costs, and financing. What construction questions can I answer for you?",
                     "type": "text",
@@ -26,7 +31,7 @@ class ChatService:
                 "role": role,
                 "content": content
             })
-            # Get response from RAG system - let the LLM handle context
+            # Get response from RAG system
             response = await self.rag_service.get_chat_response(
                 query=content,
                 chat_history=chat_sessions[session_id]
@@ -44,7 +49,7 @@ class ChatService:
         """Get chat history for a session"""
         return chat_sessions.get(session_id, [])
     def _is_construction_related(self, query: str) -> bool:
-        """Check if query is related to construction - only for first message"""
+        """Check if query is related to construction"""
         construction_keywords = [
             'remodel', 'renovation', 'addition', 'adu', 'permit', 'cost', 
             'build', 'construction', 'contractor', 'design', 'kitchen',
