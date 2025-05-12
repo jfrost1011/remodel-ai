@@ -1,16 +1,17 @@
 import os
 from typing import List, Dict, Any, Optional
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+from pinecone import Pinecone
 from config import settings
 import logging
 logger = logging.getLogger(__name__)
 class RAGService:
     def __init__(self):
-        # Set Pinecone API key as environment variable for LangChain
-        os.environ["PINECONE_API_KEY"] = settings.pinecone_api_key
+        # Initialize Pinecone
+        pc = Pinecone(api_key=settings.pinecone_api_key)
+        index = pc.Index(settings.pinecone_index)
         # Initialize embeddings
         self.embeddings = OpenAIEmbeddings(
             openai_api_key=settings.openai_api_key
@@ -21,10 +22,12 @@ class RAGService:
             temperature=0.1,
             openai_api_key=settings.openai_api_key
         )
-        # Create vector store using from_existing_index method
-        self.vectorstore = PineconeVectorStore.from_existing_index(
-            index_name=settings.pinecone_index,
-            embedding=self.embeddings,
+        # Import here to avoid circular imports
+        from langchain_community.vectorstores import Pinecone as PineconeVectorStore
+        # Create vector store using namespace
+        self.vectorstore = PineconeVectorStore(
+            index=index,
+            embedding_function=self.embeddings.embed_query,
             text_key="text"
         )
         # Create QA chain
@@ -40,7 +43,7 @@ IMPORTANT GEOGRAPHIC RULES:
 5. For non-California locations, politely explain you only serve California
 Context from database: {context}
 Question: {question}
-Provide a helpful response using the actual data from the context. If asked about costs or timelines, use the specific numbers from the database for that location and project type.
+Based on the context above, provide specific cost estimates and timelines. Use the actual numbers from the database.
 Answer:"""
         prompt = PromptTemplate(
             template=prompt_template,
@@ -57,9 +60,15 @@ Answer:"""
     async def get_chat_response(self, query: str, chat_history: List[Dict[str, str]]) -> Dict[str, Any]:
         """Get a response for chat interface"""
         try:
-            response = self.qa_chain.run(query)
+            # Use invoke instead of run to avoid deprecation warning
+            response = self.qa_chain.invoke({"query": query})
+            # Extract the result from the response
+            if isinstance(response, dict) and "result" in response:
+                message = response["result"]
+            else:
+                message = str(response)
             return {
-                "message": response,
+                "message": message,
                 "type": "text",
                 "metadata": {
                     "confidence": 0.85,
@@ -78,8 +87,13 @@ Answer:"""
             Square footage: {project_details.get('square_footage')}
             Use the specific cost data from the database for this location and project type.
             """
-            response = self.qa_chain.run(enhanced_query)
-            return self._parse_estimate_response(response)
+            response = self.qa_chain.invoke({"query": enhanced_query})
+            # Extract the result
+            if isinstance(response, dict) and "result" in response:
+                result = response["result"]
+            else:
+                result = str(response)
+            return self._parse_estimate_response(result)
         except Exception as e:
             logger.error(f"Error generating estimate: {str(e)}")
             raise
