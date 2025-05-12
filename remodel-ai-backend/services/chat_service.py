@@ -12,10 +12,10 @@ class ChatService:
             # Get or create session
             if session_id not in chat_sessions:
                 chat_sessions[session_id] = []
-            # Check if this is a follow-up question by looking at conversation history
-            has_construction_context = self._has_construction_context(session_id)
-            # Validate query scope - if it's a follow-up to a construction conversation, allow it
-            if not has_construction_context and not self._is_construction_related(content):
+            # Check if we have an existing conversation
+            has_history = len(chat_sessions[session_id]) > 0
+            # Only check construction-related for NEW conversations
+            if not has_history and not self._is_construction_related(content):
                 return {
                     "message": "I'm specifically trained in California residential construction. I can help with remodeling, additions, ADUs, permits, costs, and financing. What construction questions can I answer for you?",
                     "type": "text",
@@ -26,7 +26,7 @@ class ChatService:
                 "role": role,
                 "content": content
             })
-            # Get response from RAG system
+            # Get response from RAG system - let the LLM handle context
             response = await self.rag_service.get_chat_response(
                 query=content,
                 chat_history=chat_sessions[session_id]
@@ -44,35 +44,14 @@ class ChatService:
         """Get chat history for a session"""
         return chat_sessions.get(session_id, [])
     def _is_construction_related(self, query: str) -> bool:
-        """Check if query is related to construction"""
+        """Check if query is related to construction - only for first message"""
         construction_keywords = [
             'remodel', 'renovation', 'addition', 'adu', 'permit', 'cost', 
             'build', 'construction', 'contractor', 'design', 'kitchen',
             'bathroom', 'zoning', 'finance', 'loan', 'estimate', 'project',
             'floor', 'roof', 'foundation', 'electrical', 'plumbing',
             'square', 'footage', 'sq ft', 'budget', 'timeline', 'price',
-            'how much', 'quote', 'expense', 'long', 'duration', 'time',
-            'when', 'schedule', 'weeks', 'months', 'days'
+            'how much', 'quote', 'expense'
         ]
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
-    def _has_construction_context(self, session_id: str) -> bool:
-        """Check if the conversation has construction context"""
-        if session_id not in chat_sessions:
-            return False
-        # Look at the last few messages to see if they're construction-related
-        history = chat_sessions[session_id]
-        if not history:
-            return False
-        # Check the last 3 messages for construction context
-        recent_messages = history[-3:] if len(history) >= 3 else history
-        for msg in recent_messages:
-            if msg["role"] == "user" and self._is_construction_related(msg["content"]):
-                return True
-            # Also check if assistant mentioned construction terms
-            if msg["role"] == "assistant" and any(
-                term in msg["content"].lower() 
-                for term in ['remodel', 'construction', 'cost', 'estimate', 'kitchen', 'bathroom']
-            ):
-                return True
-        return False
