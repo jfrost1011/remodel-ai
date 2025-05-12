@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+.env
+# Node
+node_modules/
+.next/
+out/
+dist/
+# Data
+*.csv
+!sample_data.csv
+exports/
+logs/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+# OS
+.DS_Store
+Thumbs.db
