@@ -1,11 +1,11 @@
 import os
 from typing import List, Dict, Any, Optional
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_community.vectorstores import Pinecone
+from langchain_openai import OpenAIEmbeddings
+from langchain_pinecone import Pinecone
 from langchain_openai import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from pinecone import Pinecone as PineconeClient
+from pinecone import Pinecone as PineconeClient, ServerlessSpec
 from config import settings
 import logging
 logger = logging.getLogger(__name__)
@@ -18,23 +18,28 @@ class RAGService:
         # Initialize Pinecone
         self.pc = PineconeClient(api_key=settings.pinecone_api_key)
         # Check if index exists
-        try:
-            self.index = self.pc.Index(settings.pinecone_index)
-        except:
+        index_names = [index.name for index in self.pc.list_indexes()]
+        if settings.pinecone_index not in index_names:
             logger.warning(f"Pinecone index {settings.pinecone_index} not found. Creating...")
             self.pc.create_index(
                 name=settings.pinecone_index,
                 dimension=1536,
-                metric='cosine'
+                metric='cosine',
+                spec=ServerlessSpec(
+                    cloud='aws',
+                    region='us-east-1'
+                )
             )
-            self.index = self.pc.Index(settings.pinecone_index)
+            logger.info(f"Created index {settings.pinecone_index}")
+        # Get the index
+        self.index = self.pc.Index(settings.pinecone_index)
         # Initialize LLM
         self.llm = ChatOpenAI(
             model=settings.openai_model,
             temperature=0.1,
             openai_api_key=settings.openai_api_key
         )
-        # Create vector store
+        # Create vector store 
         self.vectorstore = Pinecone(
             index=self.index,
             embedding=self.embeddings,
@@ -57,12 +62,13 @@ EXPERTISE AREAS:
 - Energy efficiency and Title 24 compliance
 - Seismic and fire safety requirements
 STRICT RULES:
-1. ONLY discuss California residential construction topics
-2. For non-California queries: "We currently serve California only, but we're expanding to [state] soon!"
-3. For specific cost estimates: Only provide for San Diego and Los Angeles
-4. REJECT non-construction queries with: "I'm specialized in California residential construction. How can I help with your construction project?"
-5. Always cite confidence levels for estimates
-6. Reference similar projects when providing estimates
+1. For ANY California construction questions: Provide helpful advice about building codes, regulations, general costs, timelines, and best practices
+2. For SPECIFIC PRICING WITH ESTIMATES: Only provide detailed cost estimates with PDF invoices for San Diego and Los Angeles projects
+3. For other California cities: Provide general advice and ballpark estimates but explain that detailed estimates are only available for SD/LA
+4. For non-California queries: "We currently serve California only, but we're expanding to [state] soon!"
+5. REJECT non-construction queries with: "I'm specialized in California residential construction. How can I help with your construction project?"
+6. Always cite confidence levels for estimates
+7. Reference similar projects when providing estimates
 Context: {context}
 Question: {question}
 Answer:"""
