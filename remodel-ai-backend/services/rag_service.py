@@ -4,12 +4,13 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from pinecone import Pinecone as PineconeClient
 from config import settings
 import logging
 logger = logging.getLogger(__name__)
 class RAGService:
     def __init__(self):
+        # Set Pinecone API key as environment variable for LangChain
+        os.environ["PINECONE_API_KEY"] = settings.pinecone_api_key
         # Initialize embeddings
         self.embeddings = OpenAIEmbeddings(
             openai_api_key=settings.openai_api_key
