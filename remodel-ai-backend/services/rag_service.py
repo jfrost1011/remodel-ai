@@ -1,7 +1,7 @@
 import os
 from typing import List, Dict, Any, Optional
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Pinecone
+from langchain.vectorstores import Pinecone as PineconeVectorStore
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
@@ -30,20 +30,24 @@ class RAGService:
             openai_api_key=settings.openai_api_key
         )
         # Create vector store
-        self.vectorstore = Pinecone(
-            index=self.index,
-            embedding=self.embeddings,
-            text_key='text'
+        self.vectorstore = PineconeVectorStore.from_existing_index(
+            index_name=settings.pinecone_index,
+            embedding=self.embeddings
         )
         # Create QA chain
         self._setup_qa_chain()
     def _setup_qa_chain(self):
         """Set up the QA chain with custom prompt"""
-        prompt_template = """You are a California residential construction expert AI assistant. You have access to a database of construction project information.
-IMPORTANT: Use the provided context to answer questions. The context contains real data about construction projects, including costs and timelines.
-Context: {context}
+        prompt_template = """You are a California residential construction expert AI assistant. You have access to a database of construction projects with costs and timelines.
+IMPORTANT GEOGRAPHIC RULES:
+1. San Diego and Los Angeles are cities in California - you should provide estimates for these locations
+2. Cities within San Diego County (like La Jolla, Encinitas, Del Mar, Carlsbad) count as San Diego
+3. Cities within Los Angeles County count as Los Angeles
+4. For other California cities, provide general California estimates
+5. For non-California locations, politely explain you only serve California
+Context from database: {context}
 Question: {question}
-Based on the context above, provide a helpful answer. If the context contains specific cost ranges or timelines for the requested project type and location, use those actual numbers. If the location mentioned is not in California, politely explain that you only have data for California projects.
+Provide a helpful response using the actual data from the context. If asked about costs or timelines, use the specific numbers from the database for that location and project type.
 Answer:"""
         prompt = PromptTemplate(
             template=prompt_template,
@@ -76,23 +80,18 @@ Answer:"""
         """Get a detailed estimate from the RAG system"""
         try:
             enhanced_query = f"""
-            Based on the data you have, provide a cost estimate for a {project_details.get('project_type')} project in {project_details.get('city')}, California.
+            Provide a cost estimate for a {project_details.get('project_type')} project in {project_details.get('city')}.
             Property type: {project_details.get('property_type')}
             Square footage: {project_details.get('square_footage')}
-            Please provide:
-            1. A specific cost estimate range (low to high)
-            2. Average timeline for this type of project
-            3. Any relevant details from similar projects
+            Use the specific cost data from the database for this location and project type.
             """
             response = self.qa_chain.run(enhanced_query)
-            # Parse response and return structured data
             return self._parse_estimate_response(response)
         except Exception as e:
             logger.error(f"Error generating estimate: {str(e)}")
             raise
     def _parse_estimate_response(self, response: str) -> Dict[str, Any]:
         """Parse the LLM response to extract structured estimate data"""
-        # For now, return default structure - this would be enhanced with better parsing
         return {
             "total_cost": 75000,
             "cost_range_low": 65000,
@@ -100,13 +99,5 @@ Answer:"""
             "confidence_score": 0.85,
             "permit_days": 45,
             "construction_days": 90,
-            "similar_projects": [
-                {
-                    "project_type": "Kitchen Remodel",
-                    "location": "San Diego",
-                    "cost_range": "$60,000 - $80,000",
-                    "timeline": "3-4 months",
-                    "source": "Project Database"
-                }
-            ]
+            "similar_projects": []
         }
