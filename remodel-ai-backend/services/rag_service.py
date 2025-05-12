@@ -31,16 +31,14 @@ class RAGService:
     def _setup_qa_chain(self):
         """Set up the QA chain with custom prompt"""
         prompt_template = """You are a California residential construction expert AI assistant. You have access to a database of construction projects with costs and timelines.
-IMPORTANT CONVERSATION CONTEXT:
-Previous conversation:
-{chat_history}
-Current question: {question}
 Context from database: {context}
-Based on the conversation and database context above, provide a helpful answer. If asked about timelines, provide specific timeline estimates in weeks or months. For cost questions, provide specific dollar amounts.
+Question: {question}
+Based on the context above, provide specific cost estimates and timelines. Use the actual numbers from the database.
+If the question refers to something mentioned earlier, use context clues to understand what it refers to.
 Answer:"""
         prompt = PromptTemplate(
             template=prompt_template,
-            input_variables=["context", "question", "chat_history"]
+            input_variables=["context", "question"]
         )
         self.qa_chain = RetrievalQA.from_chain_type(
             llm=self.llm,
@@ -53,18 +51,18 @@ Answer:"""
     async def get_chat_response(self, query: str, chat_history: List[Dict[str, str]]) -> Dict[str, Any]:
         """Get a response for chat interface"""
         try:
-            # Format chat history for the prompt
-            history_text = ""
-            if chat_history:
-                for i, msg in enumerate(chat_history[-4:]):  # Include last 4 messages for context
-                    if i < len(chat_history) - 1:  # Don't include the current message
-                        role = "User" if msg["role"] == "user" else "Assistant"
-                        history_text += f"{role}: {msg['content']}\n"
-            # Include chat history in the query
-            response = self.qa_chain.invoke({
-                "query": query,
-                "chat_history": history_text
-            })
+            # Create enhanced query with conversation context
+            enhanced_query = query
+            if chat_history and len(chat_history) > 1:
+                # Build context from previous messages
+                context_parts = []
+                for msg in chat_history[-4:-1]:  # Get last few messages except current
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    context_parts.append(f"{role}: {msg['content']}")
+                # Add context to the query
+                enhanced_query = f"Previous conversation:\n" + "\n".join(context_parts) + f"\n\nCurrent question: {query}"
+            # Use invoke
+            response = self.qa_chain.invoke({"query": enhanced_query})
             # Extract the result from the response
             if isinstance(response, dict) and "result" in response:
                 message = response["result"]
@@ -90,7 +88,7 @@ Answer:"""
             Square footage: {project_details.get('square_footage')}
             Use the specific cost data from the database for this location and project type.
             """
-            response = self.qa_chain.invoke({"query": enhanced_query, "chat_history": ""})
+            response = self.qa_chain.invoke({"query": enhanced_query})
             # Extract the result
             if isinstance(response, dict) and "result" in response:
                 result = response["result"]
