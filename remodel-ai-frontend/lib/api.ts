@@ -150,7 +150,7 @@ const api = {
     // Check if we have a URL or base64 data
     if (result.file_url) {
       // Download from URL
-      const downloadResponse = await fetch(result.file_url);
+      const downloadResponse = await fetch(`${API_BASE_URL}${result.file_url}`);
       if (!downloadResponse.ok) {
         throw new Error('Failed to download PDF');
       }
