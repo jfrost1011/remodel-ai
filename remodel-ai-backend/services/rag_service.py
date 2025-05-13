@@ -4,6 +4,7 @@ from langchain_openai import ChatOpenAI
 from pinecone import Pinecone as PineconeClient
 import openai
 from config import settings
+import re
 
 class RAGService:
     def __init__(self):
@@ -64,8 +65,8 @@ class RAGService:
             'project_type': None,
             'asking_timeline': False,
             'asking_cost': False,
-            'previous_project': None,
-            'previous_location': None
+            'mentioned_cost': None,
+            'mentioned_timeline': None
         }
         
         query_lower = query.lower()
@@ -101,8 +102,8 @@ class RAGService:
                     context['project_type'] = project_key
                     break
         
-        # If we don't have full context, check recent conversation
-        for i, (human, ai) in enumerate(reversed(chat_history[-5:])):  # Check last 5 exchanges
+        # Look through chat history to extract context
+        for i, (human, ai) in enumerate(reversed(chat_history)):
             human_lower = human.lower()
             ai_lower = ai.lower()
             
@@ -110,12 +111,8 @@ class RAGService:
             if not context['location']:
                 if 'san diego' in human_lower or 'san diego' in ai_lower:
                     context['location'] = 'San Diego'
-                    if i == 0:  # Most recent exchange
-                        context['previous_location'] = 'San Diego'
                 elif 'los angeles' in human_lower or ' la ' in human_lower or 'los angeles' in ai_lower:
                     context['location'] = 'Los Angeles'
-                    if i == 0:
-                        context['previous_location'] = 'Los Angeles'
             
             # Extract project type from history
             if not context['project_type']:
@@ -123,16 +120,29 @@ class RAGService:
                     for keyword in keywords:
                         if keyword in human_lower or keyword in ai_lower:
                             context['project_type'] = project_key
-                            if i == 0:  # Most recent exchange
-                                context['previous_project'] = project_key
                             break
-        
-        # If this is a follow-up question about timeline or cost, use previous context
-        if (context['asking_timeline'] or context['asking_cost']) and not context['project_type']:
-            context['project_type'] = context['previous_project']
             
-        if (context['asking_timeline'] or context['asking_cost']) and not context['location']:
-            context['location'] = context['previous_location']
+            # Extract cost information from AI responses
+            cost_pattern = r'\$[\d,]+(?:\s*(?:to|-)\s*\$[\d,]+)?'
+            cost_matches = re.findall(cost_pattern, ai)
+            if cost_matches and not context['mentioned_cost']:
+                context['mentioned_cost'] = cost_matches[0]
+            
+            # Extract timeline information from AI responses
+            timeline_patterns = [
+                r'(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*weeks',
+                r'(\d+(?:\.\d+)?)\s*weeks',
+                r'timeline[^.]*?(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*weeks'
+            ]
+            
+            for pattern in timeline_patterns:
+                timeline_matches = re.findall(pattern, ai_lower)
+                if timeline_matches and not context['mentioned_timeline']:
+                    if isinstance(timeline_matches[0], tuple):
+                        context['mentioned_timeline'] = f"{timeline_matches[0][0]} to {timeline_matches[0][1]} weeks"
+                    else:
+                        context['mentioned_timeline'] = f"{timeline_matches[0]} weeks"
+                    break
         
         return context
 
@@ -166,6 +176,20 @@ Keep your response conversational and brief."""
             # Extract comprehensive context from conversation
             context = self.extract_project_context(query, chat_history)
             print(f"Extracted context: {context}")
+            
+            # Handle timeline questions when we already have the information
+            if context['asking_timeline'] and context['mentioned_timeline'] and context['project_type'] and context['location']:
+                return {
+                    "message": f"The timeline for the {context['project_type'].replace('_', ' ')} remodel in {context['location']} is {context['mentioned_timeline']}.",
+                    "source_documents": []
+                }
+            
+            # Handle cost questions when we already have the information
+            if context['asking_cost'] and context['mentioned_cost'] and context['project_type'] and context['location']:
+                return {
+                    "message": f"The cost for the {context['project_type'].replace('_', ' ')} remodel in {context['location']} is {context['mentioned_cost']}.",
+                    "source_documents": []
+                }
             
             # If we're missing critical context for a follow-up question
             if (context['asking_timeline'] or context['asking_cost']) and not (context['location'] and context['project_type']):
@@ -243,7 +267,7 @@ Keep your response conversational and brief."""
                     project_groups[key].append(match.metadata)
                     docs.append(match.metadata)
             
-            # Format grouped data
+            # Format grouped data - now include timeline in the response
             for key, group in project_groups.items():
                 if group:
                     # Average the costs across similar projects
@@ -255,44 +279,22 @@ Keep your response conversational and brief."""
                     location = group[0].get('location', 'Unknown')
                     timeline = group[0].get('timeline', 'Unknown')
                     
-                    context_parts.append(f"{project_type} in {location}: ${avg_low:,.0f}-${avg_high:,.0f} (avg ${avg_cost:,.0f}), {timeline} weeks")
+                    context_parts.append(f"{project_type} in {location}: ${avg_low:,.0f}-${avg_high:,.0f} (avg ${avg_cost:,.0f}), timeline: {timeline} weeks")
             
             context_text = "\n".join(context_parts)
             
             # Create a focused prompt based on what's being asked
-            if context['asking_timeline'] and not context['asking_cost']:
-                prompt = f"""You are a helpful construction timeline advisor. Based on the data below, provide a brief response about project timelines.
+            prompt = f"""You are a helpful construction cost advisor for California.
 
-Data:
-{context_text}
-
-User's previous conversation mentioned: {context['project_type']} in {context['location']}
-Current question: {query}
-
-Provide a brief, direct answer about the timeline for the specific project they're asking about."""
-            
-            elif context['asking_cost'] and not context['asking_timeline']:
-                prompt = f"""You are a helpful construction cost advisor. Based on the data below, provide a brief response about project costs.
-
-Data:
-{context_text}
-
-Context: The conversation is about {context['project_type']} in {context['location']}
-Current question: {query}
-
-Provide a brief, direct answer about the cost for the specific project they're asking about."""
-            
-            else:
-                prompt = f"""You are a helpful construction cost advisor for California, specifically serving San Diego and Los Angeles.
-
-Based on the data below, provide a concise response about construction costs and timelines.
+Based on the data below, provide a concise response.
 
 Data:
 {context_text}
 
 Question: {query}
 
-Provide a brief, friendly response with the most relevant information. Include both cost ranges and timelines if available."""
+IMPORTANT: Include both cost and timeline information in your response when discussing any project.
+Provide a brief, friendly response with the most relevant information."""
             
             print("Calling LLM...")
             response = await self.llm.ainvoke(prompt)
