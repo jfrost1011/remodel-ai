@@ -19,7 +19,15 @@ interface Message {
 }
 
 // Define the ProjectDetails type
-interface ProjectDetails {
+export export interface ProjectDetails {
+  projectType: string
+  propertyType: string
+  address?: string
+  city: string
+  state: string
+  squareFootage?: string
+  additionalDetails?: string
+}
   projectType: string
   propertyType: string
   address: string
@@ -153,7 +161,7 @@ export default function Home() {
     }
   }
 
-  const handleProjectDetailsSubmit = async (details: ProjectDetails) => {
+  const handleProjectDetailsSubmit = (details: ProjectDetails) => {
     setProjectDetails(details)
     setIsProjectDetailsOpen(false)
     setIsLoading(true)
@@ -267,4 +275,5 @@ export default function Home() {
     </div>
   )
 }
+
 

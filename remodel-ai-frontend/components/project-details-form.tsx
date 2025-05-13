@@ -1,15 +1,24 @@
 "use client"
 
 import type React from "react"
+import type { ProjectDetails } from '@/app/page'
 
 import { useState } from "react"
+import type { ProjectDetails } from '@/app/page'
 import { X, DollarSign } from "lucide-react"
+import type { ProjectDetails } from '@/app/page'
 import { Button } from "@/components/ui/button"
+import type { ProjectDetails } from '@/app/page'
 import { Input } from "@/components/ui/input"
+import type { ProjectDetails } from '@/app/page'
 import { Label } from "@/components/ui/label"
+import type { ProjectDetails } from '@/app/page'
 import { Textarea } from "@/components/ui/textarea"
+import type { ProjectDetails } from '@/app/page'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { ProjectDetails } from '@/app/page'
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import type { ProjectDetails } from '@/app/page'
 
 // First, update the ProjectDetails interface to include propertyType
 interface ProjectDetails {
@@ -296,3 +305,4 @@ export function ProjectDetailsForm({ isOpen, onClose, onSubmit, initialValues }:
     </Sheet>
   )
 }
+
