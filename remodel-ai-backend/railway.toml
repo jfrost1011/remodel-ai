@@ -1,6 +1,8 @@
 [build]
-builder = "nixpacks"
-[phases.setup]
-nixPkgs = ["python311", "gcc"]
-[start]
-cmd = "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
+builder = "dockerfile"
+[deploy]
+numReplicas = 1
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 10
