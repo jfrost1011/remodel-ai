@@ -102,33 +102,32 @@ class RAGService:
                     break
         
         # If not found in current query, check history
-            # Check if we're missing context but this isn't a follow-up question
-            if (not context['location'] or not context['project_type']) and not (context.get('is_quality_question') or context.get('is_followup')):
+        if context['is_followup'] or context['is_quality_question']:
             # Look through history from most recent to oldest
-            for human, ai in reversed(chat_history):
-                human_lower = human.lower()
-                ai_lower = ai.lower()
+            for human, ai in reversed(chat_history[-3:]):
+                    human_lower = human.lower()
+                    ai_lower = ai.lower()
                 
-                if not context['location']:
-                    if 'san diego' in human_lower or 'san diego' in ai_lower:
-                        context['location'] = 'San Diego'
-                    elif 'los angeles' in human_lower or 'los angeles' in ai_lower:
-                        context['location'] = 'Los Angeles'
+                    if not context['location']:
+                        if 'san diego' in human_lower or 'san diego' in ai_lower:
+                            context['location'] = 'San Diego'
+                        elif 'los angeles' in human_lower or 'los angeles' in ai_lower:
+                            context['location'] = 'Los Angeles'
                 
-                if not context['project_type']:
-                    for ptype, keywords in project_types.items():
-                        for keyword in keywords:
-                            if keyword in human_lower or keyword in ai_lower:
-                                context['project_type'] = ptype
-                                break
+                    if not context['project_type']:
+                        for ptype, keywords in project_types.items():
+                            for keyword in keywords:
+                                if keyword in human_lower or keyword in ai_lower:
+                                    context['project_type'] = ptype
+                                    break
                 
-                if context['location'] and context['project_type']:
-                    break
+                    if context['location'] and context['project_type']:
+                        break
         
-        return context
+            return context
 
-    async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Get response from the RAG system"""
+        async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
+            """Get response from the RAG system"""
         print(f"Getting chat response for query: {query}")
         
         # Handle non-construction queries
