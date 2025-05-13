@@ -51,3 +51,46 @@ export const api = {
     return response.json();
   },
 };
+// Export the functions that the app expects
+export async function sendChatMessage(
+  message: string,
+  projectDetails?: any,
+  accessToken?: string | null,
+): Promise<{
+  response: string
+  estimateData?: any
+  estimateId?: string
+}> {
+  const result = await api.chat(message);
+  return {
+    response: result.message,
+    estimateData: result.estimate_data,
+    estimateId: result.estimate_id
+  };
+}
+export async function getEstimate(
+  details: any,
+  accessToken?: string | null
+): Promise<{
+  response: string
+  estimateData: any
+  estimateId: string
+}> {
+  const result = await api.createEstimate(details);
+  return {
+    response: result.message || "Estimate created successfully",
+    estimateData: result,
+    estimateId: result.estimate_id
+  };
+}
+export async function exportEstimatePDF(estimateId: string): Promise<Blob> {
+  const result = await api.exportPDF(estimateId);
+  // Fetch the PDF from the URL returned by the API
+  const pdfResponse = await fetch(result.file_url);
+  if (!pdfResponse.ok) {
+    throw new Error('Failed to download PDF');
+  }
+  return pdfResponse.blob();
+}
+// Export the api object as default
+export default api;
