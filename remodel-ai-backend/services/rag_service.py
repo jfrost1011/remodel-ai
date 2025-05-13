@@ -4,7 +4,6 @@ from langchain_openai import ChatOpenAI
 from pinecone import Pinecone as PineconeClient
 import openai
 from config import settings
-import json
 
 class RAGService:
     def __init__(self):
@@ -12,14 +11,14 @@ class RAGService:
         self.llm = ChatOpenAI(
             openai_api_key=settings.openai_api_key,
             model_name=settings.openai_model,
-            temperature=0.7
+            temperature=0.3  # Lower temperature for more consistent responses
         )
         
         # Initialize OpenAI client directly
         self.openai_client = openai.OpenAI(api_key=settings.openai_api_key)
         
-        # Session data cache
-        self.session_cache = {}
+        # Session data cache - stores data per session
+        self.session_data_cache = {}
         
         # Initialize Pinecone
         try:
@@ -47,17 +46,72 @@ class RAGService:
             'san diego', 'los angeles', 'la', 'california', 'timeline', 'duration',
             'project', 'construction', 'contractor', 'materials', 'labor', 'permit',
             'average', 'typical', 'usually', 'timeframe', 'long', 'weeks', 'months',
-            'high end', 'low end', 'mid range', 'luxury', 'standard', 'basic'
+            'high end', 'low end', 'mid range', 'luxury', 'standard', 'basic', 'quality'
         ]
         
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
     
-    def get_session_key(self, location: str, project_type: str) -> str:
-        """Create a consistent key for caching session data"""
-        return f"{location}_{project_type}".lower().replace(' ', '_')
+    def extract_context_from_history(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
+        """Extract context from conversation history"""
+        context = {
+            'location': None,
+            'project_type': None,
+            'is_quality_question': False
+        }
+        
+        query_lower = query.lower()
+        
+        # Check if this is a quality-related question
+        quality_keywords = ['high end', 'low end', 'mid range', 'luxury', 'standard', 'basic', 'quality', 'that for']
+        context['is_quality_question'] = any(keyword in query_lower for keyword in quality_keywords)
+        
+        # Extract from current query
+        if 'san diego' in query_lower:
+            context['location'] = 'San Diego'
+        elif 'los angeles' in query_lower or ' la ' in query_lower:
+            context['location'] = 'Los Angeles'
+        
+        project_types = {
+            'kitchen': ['kitchen'],
+            'bathroom': ['bathroom', 'bath'],
+            'room addition': ['room addition', 'addition'],
+            'adu': ['adu', 'accessory dwelling'],
+            'garage': ['garage']
+        }
+        
+        for ptype, keywords in project_types.items():
+            for keyword in keywords:
+                if keyword in query_lower:
+                    context['project_type'] = ptype
+                    break
+        
+        # If not found in current query, check history
+        if not context['location'] or not context['project_type']:
+            # Look through history from most recent to oldest
+            for human, ai in reversed(chat_history):
+                human_lower = human.lower()
+                ai_lower = ai.lower()
+                
+                if not context['location']:
+                    if 'san diego' in human_lower or 'san diego' in ai_lower:
+                        context['location'] = 'San Diego'
+                    elif 'los angeles' in human_lower or 'los angeles' in ai_lower:
+                        context['location'] = 'Los Angeles'
+                
+                if not context['project_type']:
+                    for ptype, keywords in project_types.items():
+                        for keyword in keywords:
+                            if keyword in human_lower or keyword in ai_lower:
+                                context['project_type'] = ptype
+                                break
+                
+                if context['location'] and context['project_type']:
+                    break
+        
+        return context
 
-    async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
+    async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
         """Get response from the RAG system"""
         print(f"Getting chat response for query: {query}")
         
@@ -83,85 +137,76 @@ Keep your response conversational and brief."""
         
         try:
             # Extract context from conversation
-            location = None
-            project_type = None
+            context = self.extract_context_from_history(query, chat_history)
+            print(f"Extracted context: {context}")
             
-            # Check current query
-            query_lower = query.lower()
-            if 'san diego' in query_lower:
-                location = 'San Diego'
-            elif 'los angeles' in query_lower or ' la ' in query_lower:
-                location = 'Los Angeles'
+            # Get or create session cache
+            if session_id and session_id not in self.session_data_cache:
+                self.session_data_cache[session_id] = {}
             
-            project_types = ['kitchen', 'bathroom', 'room addition', 'adu', 'garage', 'landscaping']
-            for pt in project_types:
-                if pt in query_lower:
-                    project_type = pt
-                    break
+            session_cache = self.session_data_cache.get(session_id, {}) if session_id else {}
             
-            # If not in current query, check chat history
-            if not location or not project_type:
-                full_conversation = []
-                for human, ai in chat_history:
-                    full_conversation.append(human.lower())
-                    full_conversation.append(ai.lower())
+            # Create cache key based on location and project type
+            cache_key = f"{context.get('location', 'unknown')}_{context.get('project_type', 'unknown')}"
+            
+            # If this is a quality question about cached data, use the cached data
+            if context['is_quality_question'] and cache_key in session_cache:
+                cached_data = session_cache[cache_key]
+                print(f"Using cached data for quality question: {cache_key}")
                 
-                conversation_text = " ".join(full_conversation)
-                
-                if not location:
-                    if 'san diego' in conversation_text:
-                        location = 'San Diego'
-                    elif 'los angeles' in conversation_text or ' la ' in conversation_text:
-                        location = 'Los Angeles'
-                
-                if not project_type:
-                    for pt in project_types:
-                        if pt in conversation_text:
-                            project_type = pt
-                            break
-            
-            print(f"Context - Location: {location}, Project Type: {project_type}")
-            
-            # Check if we have cached data for this location/project
-            session_key = None
-            if location and project_type:
-                session_key = self.get_session_key(location, project_type)
-                
-                if session_key in self.session_cache:
-                    print(f"Using cached data for {session_key}")
-                    cached_data = self.session_cache[session_key]
-                    
-                    # Use cached data to maintain consistency
-                    prompt = f"""You are a helpful construction cost advisor. 
-                    
-Previous conversation context:
-{json.dumps(chat_history[-3:], indent=2)}
+                prompt = f"""You are a construction cost advisor. The user previously asked about {cached_data['project_type']} remodel in {cached_data['location']}.
+
+You provided these costs:
+- Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
+- Average: ${cached_data['cost_average']:,.0f}
+- Timeline: {cached_data['timeline']} weeks
 
 Current question: {query}
 
-You previously provided this information for {project_type} remodel in {location}:
+Answer their question about quality levels. Be consistent with the numbers you already provided.
+Explain whether these costs represent high-end, mid-range, or budget options.
+Do NOT provide different numbers or mention other locations."""
+                
+                response = await self.llm.ainvoke(prompt)
+                return {
+                    "message": response.content,
+                    "source_documents": cached_data.get('source_documents', [])
+                }
+            
+            # If we have cached data for this location/project, use it
+            if cache_key in session_cache and not context['is_quality_question']:
+                cached_data = session_cache[cache_key]
+                print(f"Using cached data for: {cache_key}")
+                
+                prompt = f"""You are a construction cost advisor. Use this EXACT data to answer the question:
+
+{cached_data['project_type']} remodel in {cached_data['location']}:
 - Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
-- Average cost: ${cached_data['cost_average']:,.0f}
+- Average: ${cached_data['cost_average']:,.0f}
 - Timeline: {cached_data['timeline']} weeks
 
-Use this EXACT same data to answer the current question. Do not change the numbers.
-If asked about quality levels, explain what these numbers represent (e.g., if they're mid-range, high-end, etc.).
-Maintain consistency with your previous answers."""
-                    
-                    response = await self.llm.ainvoke(prompt)
-                    return {
-                        "message": response.content,
-                        "source_documents": []
-                    }
+Question: {query}
+
+Use these exact numbers in your response. Be helpful and conversational."""
+                
+                response = await self.llm.ainvoke(prompt)
+                return {
+                    "message": response.content,
+                    "source_documents": cached_data.get('source_documents', [])
+                }
             
-            # If no cached data, search for new data
-            search_query = query
-            if location:
-                search_query += f" {location}"
-            if project_type:
-                search_query += f" {project_type}"
+            # Need to search for new data
+            if not context['location'] or not context['project_type']:
+                return {
+                    "message": "I need more information to provide an accurate estimate. What type of project are you interested in, and in which city (San Diego or Los Angeles)?",
+                    "source_documents": []
+                }
+            
+            # Build search query
+            search_query = f"{context['project_type']} remodel {context['location']} cost estimate"
             
             # Create embedding
+            print(f"Creating embedding for: {search_query}")
             embedding_response = self.openai_client.embeddings.create(
                 input=search_query,
                 model=settings.embedding_model
@@ -176,70 +221,64 @@ Maintain consistency with your previous answers."""
                 namespace=""
             )
             
-            # Filter results
-            filtered_matches = []
+            # Filter for exact location and project type matches
+            exact_matches = []
             for match in search_results.matches:
                 if match.metadata:
-                    if location and match.metadata.get('location') == location:
-                        if project_type and project_type in match.metadata.get('remodel_type', '').lower():
-                            filtered_matches.append(match)
+                    meta_location = match.metadata.get('location', '')
+                    meta_project = match.metadata.get('remodel_type', '').lower()
+                    
+                    if meta_location == context['location']:
+                        if context['project_type'].replace(' ', '_') in meta_project or context['project_type'] in meta_project:
+                            exact_matches.append(match)
             
-            # If not enough matches, broaden search
-            if len(filtered_matches) < 3:
+            if not exact_matches:
+                # Fallback to location-only matches
                 for match in search_results.matches:
-                    if match.metadata:
-                        if location and match.metadata.get('location') == location:
-                            filtered_matches.append(match)
+                    if match.metadata and match.metadata.get('location', '') == context['location']:
+                        exact_matches.append(match)
             
-            if not filtered_matches:
-                filtered_matches = search_results.matches[:5]
-            
-            # Get the best match and cache it
-            best_match = filtered_matches[0]
-            if best_match.metadata and session_key:
-                # Cache this data for consistency
-                self.session_cache[session_key] = {
-                    'cost_low': best_match.metadata.get('cost_low', 0),
-                    'cost_high': best_match.metadata.get('cost_high', 0),
-                    'cost_average': best_match.metadata.get('cost_average', 0),
-                    'timeline': best_match.metadata.get('timeline', 'Unknown'),
-                    'project_type': best_match.metadata.get('remodel_type', ''),
-                    'location': best_match.metadata.get('location', '')
+            if not exact_matches:
+                return {
+                    "message": f"I don't have specific data for {context['project_type']} remodels in {context['location']}. Would you like estimates for other types of projects in that area?",
+                    "source_documents": []
                 }
             
-            # Format data for prompt
-            data_summary = []
-            for match in filtered_matches[:3]:
-                if match.metadata:
-                    meta = match.metadata
-                    data_summary.append(
-                        f"- {meta.get('remodel_type', '').replace('_', ' ').title()} in {meta.get('location', '')}: "
-                        f"${meta.get('cost_low', 0):,.0f}-${meta.get('cost_high', 0):,.0f} "
-                        f"(avg ${meta.get('cost_average', 0):,.0f}), {meta.get('timeline', 'Unknown')} weeks"
-                    )
+            # Use the best match
+            best_match = exact_matches[0]
+            meta = best_match.metadata
             
-            data_text = "\n".join(data_summary)
+            # Cache this data for the session
+            if session_id:
+                session_cache[cache_key] = {
+                    'project_type': context['project_type'],
+                    'location': context['location'],
+                    'cost_low': meta.get('cost_low', 0),
+                    'cost_high': meta.get('cost_high', 0),
+                    'cost_average': meta.get('cost_average', 0),
+                    'timeline': meta.get('timeline', 'Unknown'),
+                    'source_documents': [meta]
+                }
+                self.session_data_cache[session_id] = session_cache
             
-            prompt = f"""You are a helpful construction cost advisor for California.
+            # Create response
+            prompt = f"""You are a construction cost advisor. Provide information about this project:
 
-Current question: {query}
+{context['project_type']} remodel in {context['location']}:
+- Cost range: ${meta.get('cost_low', 0):,.0f} to ${meta.get('cost_high', 0):,.0f}
+- Average cost: ${meta.get('cost_average', 0):,.0f}
+- Timeline: {meta.get('timeline', 'Unknown')} weeks
 
-Available data:
-{data_text}
+Question: {query}
 
-Instructions:
-1. Focus on the specific location and project type mentioned
-2. Do not mention other cities unless specifically asked
-3. Be consistent with any numbers you provide
-4. If asked about quality levels, explain what the data represents
-
-Provide a clear, helpful response."""
+Provide a helpful, conversational response that includes both cost and timeline information.
+Focus only on {context['location']} - do not mention other cities."""
             
             response = await self.llm.ainvoke(prompt)
             
             return {
                 "message": response.content,
-                "source_documents": [match.metadata for match in filtered_matches[:3]]
+                "source_documents": [meta]
             }
             
         except Exception as e:
