@@ -5,6 +5,7 @@ from pinecone import Pinecone as PineconeClient
 import openai
 from config import settings
 import re
+import json
 
 class RAGService:
     def __init__(self):
@@ -20,10 +21,7 @@ class RAGService:
         
         # Initialize Pinecone with better error handling
         try:
-            # Initialize Pinecone client
             pc = PineconeClient(api_key=settings.pinecone_api_key)
-            
-            # Check if index exists
             indexes = pc.list_indexes()
             index_names = [idx.name for idx in indexes.indexes] if hasattr(indexes, 'indexes') else [idx.name for idx in indexes]
             
@@ -34,7 +32,6 @@ class RAGService:
                 print(f"Warning: Pinecone index '{settings.pinecone_index}' not found.")
                 self.index = None
             else:
-                # Initialize Pinecone index
                 self.index = pc.Index(settings.pinecone_index)
                 print("Pinecone index initialized successfully")
                 
@@ -52,99 +49,82 @@ class RAGService:
             'landscaping', 'pool', 'deck', 'patio', 'how much', 'budget', 'quote',
             'san diego', 'los angeles', 'la', 'california', 'timeline', 'duration',
             'project', 'construction', 'contractor', 'materials', 'labor', 'permit',
-            'average', 'typical', 'usually', 'timeframe', 'long', 'weeks', 'months'
+            'average', 'typical', 'usually', 'timeframe', 'long', 'weeks', 'months',
+            'high end', 'low end', 'mid range', 'luxury', 'standard', 'basic'
         ]
         
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
     
-    def extract_project_context(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
-        """Extract comprehensive context from conversation"""
-        context = {
-            'location': None,
-            'project_type': None,
-            'asking_timeline': False,
-            'asking_cost': False,
-            'mentioned_cost': None,
-            'mentioned_timeline': None
-        }
+    def extract_conversation_context(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
+        """Extract context from the entire conversation"""
+        # Build full conversation text
+        conversation = []
+        for human, ai in chat_history:
+            conversation.append(f"Human: {human}")
+            conversation.append(f"AI: {ai}")
+        conversation.append(f"Human: {query}")
         
-        query_lower = query.lower()
+        full_conversation = "\n".join(conversation)
         
-        # Check what the query is asking about
-        if any(word in query_lower for word in ['timeline', 'long', 'duration', 'weeks', 'months', 'time', 'how long']):
-            context['asking_timeline'] = True
-        if any(word in query_lower for word in ['cost', 'price', 'much', 'estimate', 'budget', 'average']):
-            context['asking_cost'] = True
+        # Use GPT to understand the conversation context
+        context_prompt = f"""Analyze this conversation and extract the following information:
+1. What location is being discussed? (San Diego or Los Angeles)
+2. What type of project? (kitchen, bathroom, room addition, etc.)
+3. What specific aspect is being asked about in the current question? (cost, timeline, quality level)
+4. Is this a follow-up question to a previous topic?
+
+Conversation:
+{full_conversation}
+
+Respond with a JSON object containing:
+- location: the city being discussed (or null if unclear)
+- project_type: the type of remodel (or null if unclear)
+- aspect: what the current question is asking about
+- is_followup: true if this relates to a previous question
+- previous_context: any important context from earlier in the conversation
+"""
         
-        # Extract location from current query
-        if 'san diego' in query_lower:
-            context['location'] = 'San Diego'
-        elif 'los angeles' in query_lower or ' la ' in query_lower or 'l.a.' in query_lower:
-            context['location'] = 'Los Angeles'
-        
-        # Extract project type from current query
+        try:
+            response = self.llm.invoke(context_prompt)
+            context = json.loads(response.content)
+            return context
+        except:
+            # Fallback to basic extraction
+            return {
+                'location': self._extract_location(full_conversation),
+                'project_type': self._extract_project_type(full_conversation),
+                'aspect': 'general',
+                'is_followup': len(chat_history) > 0,
+                'previous_context': ''
+            }
+    
+    def _extract_location(self, text: str) -> Optional[str]:
+        """Extract location from text"""
+        text_lower = text.lower()
+        if 'san diego' in text_lower:
+            return 'San Diego'
+        elif 'los angeles' in text_lower or ' la ' in text_lower:
+            return 'Los Angeles'
+        return None
+    
+    def _extract_project_type(self, text: str) -> Optional[str]:
+        """Extract project type from text"""
+        text_lower = text.lower()
         project_types = {
             'kitchen': ['kitchen'],
             'bathroom': ['bathroom', 'bath'],
-            'room_addition': ['room addition', 'addition'],
+            'room addition': ['room addition', 'addition'],
             'adu': ['adu', 'accessory dwelling'],
             'garage': ['garage'],
-            'landscaping': ['landscaping', 'landscape'],
-            'pool': ['pool'],
-            'deck': ['deck'],
-            'patio': ['patio']
+            'landscaping': ['landscaping', 'landscape']
         }
         
-        for project_key, keywords in project_types.items():
+        for project_type, keywords in project_types.items():
             for keyword in keywords:
-                if keyword in query_lower:
-                    context['project_type'] = project_key
-                    break
-        
-        # Look through chat history to extract context
-        for i, (human, ai) in enumerate(reversed(chat_history)):
-            human_lower = human.lower()
-            ai_lower = ai.lower()
-            
-            # Extract location from history
-            if not context['location']:
-                if 'san diego' in human_lower or 'san diego' in ai_lower:
-                    context['location'] = 'San Diego'
-                elif 'los angeles' in human_lower or ' la ' in human_lower or 'los angeles' in ai_lower:
-                    context['location'] = 'Los Angeles'
-            
-            # Extract project type from history
-            if not context['project_type']:
-                for project_key, keywords in project_types.items():
-                    for keyword in keywords:
-                        if keyword in human_lower or keyword in ai_lower:
-                            context['project_type'] = project_key
-                            break
-            
-            # Extract cost information from AI responses
-            cost_pattern = r'\$[\d,]+(?:\s*(?:to|-)\s*\$[\d,]+)?'
-            cost_matches = re.findall(cost_pattern, ai)
-            if cost_matches and not context['mentioned_cost']:
-                context['mentioned_cost'] = cost_matches[0]
-            
-            # Extract timeline information from AI responses
-            timeline_patterns = [
-                r'(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*weeks',
-                r'(\d+(?:\.\d+)?)\s*weeks',
-                r'timeline[^.]*?(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*weeks'
-            ]
-            
-            for pattern in timeline_patterns:
-                timeline_matches = re.findall(pattern, ai_lower)
-                if timeline_matches and not context['mentioned_timeline']:
-                    if isinstance(timeline_matches[0], tuple):
-                        context['mentioned_timeline'] = f"{timeline_matches[0][0]} to {timeline_matches[0][1]} weeks"
-                    else:
-                        context['mentioned_timeline'] = f"{timeline_matches[0]} weeks"
-                    break
-        
-        return context
+                if keyword in text_lower:
+                    return project_type
+        return None
 
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
         """Get response from the RAG system"""
@@ -152,7 +132,6 @@ class RAGService:
         
         # Check if this is a construction-related query
         if not self.is_construction_query(query):
-            # Handle general conversation
             prompt = f"""You are a friendly AI assistant for a construction cost estimation service.
 The user said: "{query}"
 
@@ -173,39 +152,21 @@ Keep your response conversational and brief."""
             }
         
         try:
-            # Extract comprehensive context from conversation
-            context = self.extract_project_context(query, chat_history)
+            # Extract conversation context
+            context = self.extract_conversation_context(query, chat_history)
             print(f"Extracted context: {context}")
             
-            # Handle timeline questions when we already have the information
-            if context['asking_timeline'] and context['mentioned_timeline'] and context['project_type'] and context['location']:
-                return {
-                    "message": f"The timeline for the {context['project_type'].replace('_', ' ')} remodel in {context['location']} is {context['mentioned_timeline']}.",
-                    "source_documents": []
-                }
+            # Build search query based on context
+            search_parts = []
+            if context.get('location'):
+                search_parts.append(context['location'])
+            if context.get('project_type'):
+                search_parts.append(context['project_type'])
+            search_parts.append(query)
             
-            # Handle cost questions when we already have the information
-            if context['asking_cost'] and context['mentioned_cost'] and context['project_type'] and context['location']:
-                return {
-                    "message": f"The cost for the {context['project_type'].replace('_', ' ')} remodel in {context['location']} is {context['mentioned_cost']}.",
-                    "source_documents": []
-                }
+            search_query = " ".join(search_parts)
             
-            # If we're missing critical context for a follow-up question
-            if (context['asking_timeline'] or context['asking_cost']) and not (context['location'] and context['project_type']):
-                return {
-                    "message": "I need more information to answer that. Could you tell me what type of project and which city (San Diego or Los Angeles) you're asking about?",
-                    "source_documents": []
-                }
-            
-            # Build search query with context
-            search_query = query
-            if context['project_type'] and context['project_type'] not in query.lower():
-                search_query = f"{context['project_type']} {query}"
-            if context['location'] and context['location'].lower() not in query.lower():
-                search_query = f"{search_query} {context['location']}"
-            
-            # Create embedding using OpenAI directly
+            # Create embedding
             print(f"Creating embedding for query: {search_query}")
             embedding_response = self.openai_client.embeddings.create(
                 input=search_query,
@@ -213,7 +174,7 @@ Keep your response conversational and brief."""
             )
             query_embedding = embedding_response.data[0].embedding
             
-            # Search for relevant documents in Pinecone
+            # Search Pinecone
             print(f"Searching Pinecone for relevant documents...")
             search_results = self.index.query(
                 vector=query_embedding,
@@ -224,84 +185,73 @@ Keep your response conversational and brief."""
             
             print(f"Found {len(search_results.matches)} matches")
             
-            # Filter results by context
+            # Filter by location if specified in context
             filtered_matches = []
             for match in search_results.matches:
                 if match.metadata:
-                    # Filter by location if specified
-                    location_match = True
-                    if context['location']:
-                        location_match = match.metadata.get('location') == context['location']
-                    
-                    # Filter by project type if specified
-                    project_match = True
-                    if context['project_type']:
-                        metadata_type = match.metadata.get('remodel_type', '').lower()
-                        project_match = context['project_type'].replace('_', ' ') in metadata_type or context['project_type'] in metadata_type
-                    
-                    if location_match and project_match:
+                    if context.get('location'):
+                        if match.metadata.get('location') == context['location']:
+                            filtered_matches.append(match)
+                    else:
                         filtered_matches.append(match)
             
-            # If we filtered too much, expand search
+            # If too few matches, use all results
             if len(filtered_matches) < 3:
-                filtered_matches = [m for m in search_results.matches if m.metadata.get('location') == context['location']][:5]
-                print(f"Expanded search to location only, found {len(filtered_matches)} matches")
+                filtered_matches = search_results.matches[:5]
             
-            if not filtered_matches:
-                return {
-                    "message": f"I don't have specific data for {context['project_type']} in {context['location']}. However, I can provide estimates for other project types in that area if you're interested.",
-                    "source_documents": []
-                }
-            
-            # Extract and format context
-            context_parts = []
-            docs = []
-            
-            # Group similar projects
-            project_groups = {}
+            # Format the data
+            data_points = []
             for match in filtered_matches[:5]:
                 if match.metadata:
-                    key = f"{match.metadata.get('remodel_type', '')}_{match.metadata.get('location', '')}"
-                    if key not in project_groups:
-                        project_groups[key] = []
-                    project_groups[key].append(match.metadata)
-                    docs.append(match.metadata)
+                    meta = match.metadata
+                    data_points.append({
+                        'project_type': meta.get('remodel_type', '').replace('_', ' ').title(),
+                        'location': meta.get('location', 'Unknown'),
+                        'cost_low': meta.get('cost_low', 0),
+                        'cost_high': meta.get('cost_high', 0),
+                        'cost_average': meta.get('cost_average', 0),
+                        'timeline': meta.get('timeline', 'Unknown'),
+                        'score': match.score
+                    })
             
-            # Format grouped data - now include timeline in the response
-            for key, group in project_groups.items():
-                if group:
-                    # Average the costs across similar projects
-                    avg_low = sum(p.get('cost_low', 0) for p in group) / len(group)
-                    avg_high = sum(p.get('cost_high', 0) for p in group) / len(group)
-                    avg_cost = sum(p.get('cost_average', 0) for p in group) / len(group)
-                    
-                    project_type = group[0].get('remodel_type', '').replace('_', ' ').title()
-                    location = group[0].get('location', 'Unknown')
-                    timeline = group[0].get('timeline', 'Unknown')
-                    
-                    context_parts.append(f"{project_type} in {location}: ${avg_low:,.0f}-${avg_high:,.0f} (avg ${avg_cost:,.0f}), timeline: {timeline} weeks")
+            # Create a smart prompt that maintains context
+            data_summary = "\n".join([
+                f"- {d['project_type']} in {d['location']}: ${d['cost_low']:,.0f}-${d['cost_high']:,.0f} (avg ${d['cost_average']:,.0f}), {d['timeline']} weeks"
+                for d in data_points
+            ])
             
-            context_text = "\n".join(context_parts)
+            # Build conversation context for the prompt
+            conversation_context = ""
+            if chat_history:
+                recent_history = chat_history[-3:]  # Last 3 exchanges
+                conversation_context = "\nRecent conversation:\n"
+                for human, ai in recent_history:
+                    conversation_context += f"Human: {human}\n"
+                    conversation_context += f"AI: {ai}\n"
             
-            # Create a focused prompt based on what's being asked
-            prompt = f"""You are a helpful construction cost advisor for California.
+            prompt = f"""You are a helpful construction cost advisor for California, specifically serving San Diego and Los Angeles.
 
-Based on the data below, provide a concise response.
+{conversation_context}
+Current question: {query}
 
-Data:
-{context_text}
+Available data:
+{data_summary}
 
-Question: {query}
+Instructions:
+1. If this is a follow-up question, use the context from the previous conversation
+2. Always maintain consistency with previous answers
+3. For the same project type and location, always provide the same costs and timelines
+4. Be specific about which city and project type you're discussing
+5. If asked about quality levels (high-end, mid-range, etc.), provide context about what the data represents
 
-IMPORTANT: Include both cost and timeline information in your response when discussing any project.
-Provide a brief, friendly response with the most relevant information."""
+Provide a helpful, accurate response that maintains context from the conversation."""
             
             print("Calling LLM...")
             response = await self.llm.ainvoke(prompt)
             
             return {
                 "message": response.content,
-                "source_documents": docs
+                "source_documents": [match.metadata for match in filtered_matches[:3]]
             }
             
         except Exception as e:
