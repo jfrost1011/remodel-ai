@@ -161,7 +161,7 @@ export default function Home() {
 
     try {
       // Get access token if authenticated
-      const accessToken = isAuthenticated ? getAccessToken() : null
+      const accessToken = isAuthenticated ? await getAccessToken() : null
 
       // Get estimate from API
       const { response, estimateData, estimateId } = await getEstimate(details, accessToken)
@@ -267,6 +267,7 @@ export default function Home() {
     </div>
   )
 }
+
 
 
 
