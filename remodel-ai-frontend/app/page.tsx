@@ -36,7 +36,6 @@ interface CostBreakdown {
   materials: number
   permits: number
   other: number
-  total: number
 }
 
 export default function Home() {
@@ -83,8 +82,7 @@ export default function Home() {
       materials: 0,
       permits: 0,
       other: 0,
-      total: 0,
-    })
+      })
     setProjectDetails({
       projectType: "",
       propertyType: "",
@@ -269,3 +267,4 @@ export default function Home() {
     </div>
   )
 }
+
