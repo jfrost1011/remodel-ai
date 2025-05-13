@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+﻿const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 // Helper function to convert camelCase to snake_case
 function toSnakeCase(str: string): string {
@@ -93,7 +93,7 @@ export const api = {
   baseURL: API_BASE_URL,
   
   async chat(message: string, sessionId?: string) {
-    const response = await fetch(`${API_BASE_URL}/api/v1/chat/`, {
+    const response = await fetch(`/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -118,7 +118,7 @@ export const api = {
     const transformedDetails = transformProjectDetails(projectDetails);
     console.log('Sending to backend:', transformedDetails); // Debug log
     
-    const response = await fetch(`${API_BASE_URL}/api/v1/estimate/`, {
+    const response = await fetch(`/api/estimate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -135,7 +135,7 @@ export const api = {
   },
   
   async exportPDF(estimateId: string) {
-    const response = await fetch(`${API_BASE_URL}/api/v1/export/`, {
+    const response = await fetch(`/api/export`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
