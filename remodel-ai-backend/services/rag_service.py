@@ -1,11 +1,11 @@
-import os
+﻿import os
 from typing import Optional, List, Dict, Any
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Pinecone
+from langchain_community.vectorstores import Pinecone as LangChainPinecone
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ChatMessageHistory, ConversationBufferMemory
 from langchain.prompts import ChatPromptTemplate
-from pinecone import Pinecone as PineconeClient
+from pinecone import Pinecone
 from config import settings
 class RAGService:
     def __init__(self):
@@ -21,10 +21,10 @@ class RAGService:
         # Initialize Pinecone with better error handling
         try:
             # Initialize Pinecone client
-            pc = PineconeClient(api_key=settings.pinecone_api_key)
+            pc = Pinecone(api_key=settings.pinecone_api_key)
             # Check if index exists
             indexes = pc.list_indexes()
-            index_names = [idx.name for idx in indexes.indexes]
+            index_names = [idx.name for idx in indexes.indexes] if hasattr(indexes, 'indexes') else indexes
             print(f"Available Pinecone indexes: {index_names}")
             print(f"Looking for index: {settings.pinecone_index}")
             if settings.pinecone_index not in index_names:
@@ -33,8 +33,8 @@ class RAGService:
                 self.vectorstore = None
                 self.qa_chain = None
             else:
-                # Initialize vector store
-                self.vectorstore = Pinecone.from_existing_index(
+                # Initialize vector store using LangChain's Pinecone integration
+                self.vectorstore = LangChainPinecone.from_existing_index(
                     index_name=settings.pinecone_index,
                     embedding=self.embeddings
                 )
@@ -51,7 +51,7 @@ class RAGService:
         prompt_template = """You are a construction cost estimation assistant specializing in California remodeling projects, specifically serving San Diego and Los Angeles (not LA County). You ONLY provide estimates for these two cities.
 When users mention:
 - "LA" -> interpret as Los Angeles city
-- "Los Angeles County" or "LA County" -> politely clarify you only serve Los Angeles city
+- "Los Angeles County" or "LA County" -> politely clarify you only serve Los Angeles city  
 - Any other California city -> politely inform them you only serve San Diego and Los Angeles
 Based on the retrieved construction data, provide accurate cost estimates, timelines, and material recommendations. Format your responses clearly with cost breakdowns when applicable.
 Context: {context}
