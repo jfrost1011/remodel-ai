@@ -1,10 +1,7 @@
-import os
+﻿import os
 from typing import Optional, List, Dict, Any, Tuple
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import Pinecone
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ChatMessageHistory, ConversationBufferMemory
-from langchain.prompts import ChatPromptTemplate
 from pinecone import Pinecone as PineconeClient
 from config import settings
 class RAGService:
@@ -30,74 +27,53 @@ class RAGService:
             if settings.pinecone_index not in index_names:
                 print(f"Warning: Pinecone index '{settings.pinecone_index}' not found.")
                 self.vectorstore = None
-                self.qa_chain = None
             else:
                 # Initialize vector store
                 self.vectorstore = Pinecone.from_existing_index(
                     index_name=settings.pinecone_index,
                     embedding=self.embeddings
                 )
-                self._setup_qa_chain()
                 print("Pinecone vector store initialized successfully")
         except Exception as e:
             print(f"Warning: Could not initialize Pinecone: {str(e)}")
             import traceback
             traceback.print_exc()
             self.vectorstore = None
-            self.qa_chain = None
-    def _setup_qa_chain(self):
-        """Setup the QA chain if vectorstore is available"""
-        if not self.vectorstore:
-            return
-        prompt_template = """You are a construction cost estimation assistant specializing in California remodeling projects, specifically serving San Diego and Los Angeles (not LA County). You ONLY provide estimates for these two cities.
-When users mention:
-- "LA" -> interpret as Los Angeles city
-- "Los Angeles County" or "LA County" -> politely clarify you only serve Los Angeles city  
-- Any other California city -> politely inform them you only serve San Diego and Los Angeles
-Based on the retrieved construction data, provide accurate cost estimates, timelines, and material recommendations. Format your responses clearly with cost breakdowns when applicable.
-Context: {context}
-Chat History: {chat_history}
-Question: {question}
-Answer:"""
-        try:
-            # Initialize the QA chain
-            self.qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=self.llm,
-                retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5}),
-                return_source_documents=True
-            )
-        except Exception as e:
-            print(f"Error creating QA chain: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            self.qa_chain = None
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
-        """Get response from the RAG system
-        Args:
-            query: The user's question
-            chat_history: List of tuples (human_message, ai_message)
-        """
-        if not self.qa_chain:
+        """Get response from the RAG system"""
+        if not self.vectorstore:
             return {
-                "message": "I'm currently having trouble accessing the construction database. However, I can still help with general questions about remodeling in San Diego and Los Angeles. What would you like to know?",
+                "message": "I don't know.",
                 "source_documents": []
             }
         try:
-            # The ConversationalRetrievalChain expects chat_history as list of tuples
-            response = await self.qa_chain.ainvoke({
-                "question": query,
-                "chat_history": chat_history
-            })
+            # Search for relevant documents
+            docs = self.vectorstore.similarity_search(query, k=5)
+            if not docs:
+                return {
+                    "message": "I don't know.",
+                    "source_documents": []
+                }
+            # Extract context from documents
+            context = "\n\n".join([doc.page_content for doc in docs])
+            # Create prompt
+            prompt = f"""You are a construction cost estimation assistant specializing in California remodeling projects, specifically serving San Diego and Los Angeles.
+Based on the construction data below, provide accurate cost estimates, timelines, and material recommendations.
+Construction data:
+{context}
+Question: {query}
+Answer:"""
+            # Get completion from LLM
+            response = await self.llm.ainvoke(prompt)
             return {
-                "message": response["answer"],
-                "source_documents": response.get("source_documents", [])
+                "message": response.content,
+                "source_documents": docs
             }
         except Exception as e:
             print(f"Error in get_chat_response: {str(e)}")
-            print(f"Chat history: {chat_history}")
             import traceback
             traceback.print_exc()
             return {
-                "message": "I encountered an error while processing your request. Please try again.",
+                "message": "I don't know.",
                 "source_documents": []
             }
