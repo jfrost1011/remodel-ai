@@ -35,9 +35,32 @@ class RAGService:
             import traceback
             traceback.print_exc()
             self.index = None
+    def is_construction_query(self, query: str) -> bool:
+        """Determine if the query is about construction/remodeling"""
+        construction_keywords = [
+            'cost', 'price', 'estimate', 'remodel', 'renovation', 'kitchen', 'bathroom',
+            'room', 'addition', 'adu', 'garage', 'conversion', 'flooring', 'roofing',
+            'landscaping', 'pool', 'deck', 'patio', 'how much', 'budget', 'quote',
+            'san diego', 'los angeles', 'la', 'california', 'timeline', 'duration',
+            'project', 'construction', 'contractor', 'materials', 'labor', 'permit'
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in construction_keywords)
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
         """Get response from the RAG system"""
         print(f"Getting chat response for query: {query}")
+        # Check if this is a construction-related query
+        if not self.is_construction_query(query):
+            # Handle general conversation
+            prompt = f"""You are a friendly AI assistant for a construction cost estimation service. 
+The user said: "{query}"
+If they're greeting you or having general conversation, respond naturally and briefly mention that you can help with construction/remodeling cost estimates for San Diego and Los Angeles.
+Keep your response conversational and brief."""
+            response = await self.llm.ainvoke(prompt)
+            return {
+                "message": response.content,
+                "source_documents": []
+            }
         if not self.index:
             print("No Pinecone index available")
             return {
@@ -64,10 +87,10 @@ class RAGService:
             if not search_results.matches:
                 print("No documents found")
                 return {
-                    "message": "I couldn't find specific information about that. Can you please rephrase your question?",
+                    "message": "I'm sorry, I don't have specific cost data for that type of project. Could you provide more details about what kind of remodeling project you're interested in?",
                     "source_documents": []
                 }
-            # Extract and format context more concisely
+            # Extract and format context
             context_parts = []
             docs = []
             # Group similar projects
@@ -90,18 +113,15 @@ class RAGService:
                     timeline = group[0].get('timeline', 'Unknown')
                     context_parts.append(f"{project_type} in {location}: ${avg_low:,.0f}-${avg_high:,.0f} (avg ${avg_cost:,.0f}), {timeline} weeks")
             context = "\n".join(context_parts)
-            print(f"Context length: {len(context)} characters")
-            # Create a more focused prompt
+            # Create a focused prompt
             prompt = f"""You are a helpful construction cost advisor for California, specifically serving San Diego and Los Angeles. 
-Provide concise, accurate estimates based on the data below. Keep your response brief and conversational.
+Based on the data below, provide a concise, conversational response about construction costs.
 Data:
 {context}
 Question: {query}
-Provide a clear, concise answer with key cost ranges and timelines. If asked about a specific location, focus on that area."""
+Provide a brief, friendly response focusing on the most relevant information. Include cost ranges and timelines where appropriate."""
             print("Calling LLM...")
-            # Get completion from LLM
             response = await self.llm.ainvoke(prompt)
-            print(f"LLM response: {response.content[:100]}...")
             return {
                 "message": response.content,
                 "source_documents": docs
