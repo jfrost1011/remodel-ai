@@ -55,15 +55,15 @@ async def log_requests(request: Request, call_next):
     process_time = (datetime.now() - start_time).total_seconds()
     logger.info(f"Response status: {response.status_code} - Time: {process_time}s")
     return response
-# Include routers
-app.include_router(chat.router)
-app.include_router(estimate.router)
-app.include_router(export.router)
+# Include routers with proper prefixes
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
+app.include_router(estimate.router, prefix="/api/v1/estimate", tags=["estimate"])
+app.include_router(export.router, prefix="/api/v1/export", tags=["export"])
 @app.get("/")
 async def root():
     logger.info("Root endpoint accessed")
     return {"message": "RemodelAI API is running"}
-@app.get("/health")
+@app.get("/api/v1/health")
 async def health_check():
     logger.info("Health check accessed")
     return {"status": "healthy", "environment": settings.environment}
