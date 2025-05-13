@@ -16,6 +16,19 @@ const PROJECT_TYPE_MAP: Record<string, string> = {
   'Roofing': 'roofing',
   'Flooring': 'flooring'
 };
+// Default square footage based on project type
+const DEFAULT_SQUARE_FOOTAGE: Record<string, number> = {
+  'kitchen_remodel': 150,
+  'bathroom_remodel': 75,
+  'room_addition': 300,
+  'whole_house_remodel': 2000,
+  'accessory_dwelling_unit': 600,
+  'landscaping': 500,
+  'pool_installation': 400,
+  'garage_conversion': 400,
+  'roofing': 1800,
+  'flooring': 1000
+};
 const PROPERTY_TYPE_MAP: Record<string, string> = {
   'SFR': 'single_family',
   'Single Family Residence': 'single_family',
@@ -48,11 +61,15 @@ function transformProjectDetails(details: any): any {
   if (transformed.property_type) {
     transformed.property_type = PROPERTY_TYPE_MAP[details.propertyType] || details.propertyType.toLowerCase().replace(/ /g, '_');
   }
-  // Ensure square_footage is a valid number
+  // Ensure square_footage is a valid number with smart defaults
   if (transformed.square_footage !== undefined) {
     const squareFootage = parseFloat(transformed.square_footage) || 0;
-    // Use a default value if it's 0 or invalid
-    transformed.square_footage = squareFootage > 0 ? squareFootage : 1000; // Default to 1000 sq ft
+    if (squareFootage <= 0) {
+      // Use project-specific default
+      transformed.square_footage = DEFAULT_SQUARE_FOOTAGE[transformed.project_type] || 200;
+    } else {
+      transformed.square_footage = squareFootage;
+    }
   }
   // Remove empty optional fields
   if (!transformed.additional_details) {
