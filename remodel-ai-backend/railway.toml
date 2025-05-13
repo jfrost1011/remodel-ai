@@ -2,7 +2,3 @@
 builder = "dockerfile"
 [deploy]
 numReplicas = 1
-healthcheckPath = "/health"
-healthcheckTimeout = 100
-restartPolicyType = "on-failure"
-restartPolicyMaxRetries = 10
