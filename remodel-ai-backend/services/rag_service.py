@@ -5,7 +5,7 @@ from langchain_community.vectorstores import Pinecone
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ChatMessageHistory, ConversationBufferMemory
 from langchain.prompts import ChatPromptTemplate
-import pinecone
+from pinecone import Pinecone as PineconeClient
 from config import settings
 class RAGService:
     def __init__(self):
@@ -21,13 +21,14 @@ class RAGService:
         # Initialize Pinecone with better error handling
         try:
             # Initialize Pinecone client
-            pc = Pinecone(api_key=settings.pinecone_api_key)
+            pc = PineconeClient(api_key=settings.pinecone_api_key)
             # Check if index exists
             indexes = pc.list_indexes()
-            index_names = [idx.name for idx in indexes]
+            index_names = [idx.name for idx in indexes.indexes]
+            print(f"Available Pinecone indexes: {index_names}")
+            print(f"Looking for index: {settings.pinecone_index}")
             if settings.pinecone_index not in index_names:
                 print(f"Warning: Pinecone index '{settings.pinecone_index}' not found.")
-                print(f"Available indexes: {index_names}")
                 # Don't fail immediately - allow app to start
                 self.vectorstore = None
                 self.qa_chain = None
@@ -38,6 +39,7 @@ class RAGService:
                     embedding=self.embeddings
                 )
                 self._setup_qa_chain()
+                print("Pinecone vector store initialized successfully")
         except Exception as e:
             print(f"Warning: Could not initialize Pinecone: {str(e)}")
             self.vectorstore = None
@@ -86,4 +88,3 @@ Answer:"""
                 "message": "I encountered an error while processing your request. Please try again.",
                 "source_documents": []
             }
-
