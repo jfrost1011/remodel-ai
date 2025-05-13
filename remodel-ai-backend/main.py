@@ -1,9 +1,13 @@
-from fastapi import FastAPI, HTTPException
+﻿from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from api import chat, estimate, export
 from config import settings
 import logging
+from datetime import datetime
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 # Add test endpoint
 from services.rag_service import RAGService
 @asynccontextmanager
@@ -25,23 +29,43 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-# CORS middleware
+# CORS middleware with specific origins
+allowed_origins = [
+    "https://remodel-ai.vercel.app",
+    "https://remodel-ai-*.vercel.app",  # For preview deployments
+    "http://localhost:3000",  # For local development
+    "http://localhost:3001",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Temporarily allow all for debugging
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+# Middleware to log all requests
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = datetime.now()
+    logger.info(f"Request: {request.method} {request.url.path}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    logger.info(f"Origin: {request.headers.get('origin', 'No origin header')}")
+    response = await call_next(request)
+    process_time = (datetime.now() - start_time).total_seconds()
+    logger.info(f"Response status: {response.status_code} - Time: {process_time}s")
+    return response
 # Include routers
 app.include_router(chat.router)
 app.include_router(estimate.router)
 app.include_router(export.router)
 @app.get("/")
 async def root():
+    logger.info("Root endpoint accessed")
     return {"message": "RemodelAI API is running"}
 @app.get("/health")
 async def health_check():
+    logger.info("Health check accessed")
     return {"status": "healthy", "environment": settings.environment}
 # Debug endpoint
 @app.get("/debug/pinecone")
