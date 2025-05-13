@@ -126,7 +126,7 @@ class RAGService:
         
             return context
 
-            async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
         """Get response from the RAG system"""
         print(f"Getting chat response for query: {query}")
         
