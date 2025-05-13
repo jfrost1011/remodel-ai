@@ -10,6 +10,7 @@ app = FastAPI(
 )
 # CORS configuration
 origins = [
+    "https://remodel-ai-gi1l.vercel.app",
     "http://localhost:3000",
     "http://localhost:3001",
     "https://remodel-ai.vercel.app",
@@ -45,3 +46,4 @@ async def health_check():
     return {"status": "healthy"}
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
