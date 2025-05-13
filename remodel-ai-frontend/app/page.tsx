@@ -28,14 +28,6 @@ export interface ProjectDetails {
   squareFootage?: string
   additionalDetails?: string
 }
-  projectType: string
-  propertyType: string
-  address: string
-  city: string
-  state: string
-  squareFootage: string
-  additionalDetails: string
-}
 
 // Define the CostBreakdown type
 interface CostBreakdown {
@@ -275,6 +267,7 @@ export default function Home() {
     </div>
   )
 }
+
 
 
 
