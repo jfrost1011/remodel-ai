@@ -1,5 +1,5 @@
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import Pinecone
 from langchain.chains import ConversationalRetrievalChain
@@ -59,39 +59,31 @@ Context: {context}
 Chat History: {chat_history}
 Question: {question}
 Answer:"""
-        # Create prompt template
-        from langchain.prompts import PromptTemplate
-        prompt = PromptTemplate(
-            template=prompt_template,
-            input_variables=["context", "chat_history", "question"]
-        )
         try:
-            # Initialize the QA chain without the problematic parameter
+            # Initialize the QA chain
             self.qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
                 retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5}),
-                verbose=False,
-                return_source_documents=True,
-                combine_docs_chain_kwargs={"prompt": prompt}
+                return_source_documents=True
             )
         except Exception as e:
             print(f"Error creating QA chain: {str(e)}")
             import traceback
             traceback.print_exc()
-            # Try simpler initialization
-            self.qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=self.llm,
-                retriever=self.vectorstore.as_retriever(),
-                return_source_documents=True
-            )
-    async def get_chat_response(self, query: str, chat_history: list) -> Dict[str, Any]:
-        """Get response from the RAG system"""
+            self.qa_chain = None
+    async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
+        """Get response from the RAG system
+        Args:
+            query: The user's question
+            chat_history: List of tuples (human_message, ai_message)
+        """
         if not self.qa_chain:
             return {
                 "message": "I'm currently having trouble accessing the construction database. However, I can still help with general questions about remodeling in San Diego and Los Angeles. What would you like to know?",
                 "source_documents": []
             }
         try:
+            # The ConversationalRetrievalChain expects chat_history as list of tuples
             response = await self.qa_chain.ainvoke({
                 "question": query,
                 "chat_history": chat_history
@@ -102,6 +94,9 @@ Answer:"""
             }
         except Exception as e:
             print(f"Error in get_chat_response: {str(e)}")
+            print(f"Chat history: {chat_history}")
+            import traceback
+            traceback.print_exc()
             return {
                 "message": "I encountered an error while processing your request. Please try again.",
                 "source_documents": []

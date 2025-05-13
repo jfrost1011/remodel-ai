@@ -1,60 +1,53 @@
-from typing import Dict, Any, List, Optional
-from config import settings, chat_sessions
+from typing import List, Dict, Any, Optional
+from schemas import ChatMessage, ChatResponse
 from services.rag_service import RAGService
+from services.session_service import SessionService
 import logging
+import uuid
 logger = logging.getLogger(__name__)
 class ChatService:
     def __init__(self):
         self.rag_service = RAGService()
-    async def process_message(self, content: str, role: str, session_id: str) -> Dict[str, Any]:
+        self.session_service = SessionService()
+    async def process_message(self, content: str, role: str = "user", session_id: Optional[str] = None) -> Dict[str, Any]:
         """Process a chat message and return response"""
         try:
-            # Get or create session
-            if session_id not in chat_sessions:
-                chat_sessions[session_id] = []
-            # For follow-up messages in an existing conversation, don't filter
-            if chat_sessions[session_id]:
-                # We already have a conversation going
-                pass
-            else:
-                # This is the first message - check if it's construction-related
-                if not self._is_construction_related(content):
-                    return {
-                        "message": "I'm specifically trained in California residential construction. I can help with remodeling, additions, ADUs, permits, costs, and financing. What construction questions can I answer for you?",
-                        "type": "text",
-                        "metadata": {"filtered": True}
-                    }
-            # Add user message to history
-            chat_sessions[session_id].append({
-                "role": role,
-                "content": content
-            })
-            # Get response from RAG system
+            # Create or retrieve session
+            if not session_id:
+                session_id = str(uuid.uuid4())
+            # Get session history
+            session = self.session_service.get_session(session_id)
+            chat_history = session.get("messages", [])
+            # Convert chat history to the format expected by ConversationalRetrievalChain
+            # It expects a list of tuples: [(human_message, ai_message), ...]
+            formatted_history = []
+            for i in range(0, len(chat_history), 2):
+                if i + 1 < len(chat_history):
+                    human_msg = chat_history[i].get("content", "")
+                    ai_msg = chat_history[i + 1].get("content", "")
+                    formatted_history.append((human_msg, ai_msg))
+            # Get response from RAG service
             response = await self.rag_service.get_chat_response(
                 query=content,
-                chat_history=chat_sessions[session_id]
+                chat_history=formatted_history
             )
-            # Add assistant response to history
-            chat_sessions[session_id].append({
-                "role": "assistant",
-                "content": response["message"]
-            })
-            return response
+            # Update session with new messages
+            chat_history.append({"role": role, "content": content})
+            chat_history.append({"role": "assistant", "content": response["message"]})
+            self.session_service.update_session(
+                session_id=session_id,
+                messages=chat_history
+            )
+            return {
+                "message": response["message"],
+                "session_id": session_id,
+                "source_documents": response.get("source_documents", [])
+            }
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
-            raise
-    def get_session_history(self, session_id: str) -> List[Dict[str, Any]]:
-        """Get chat history for a session"""
-        return chat_sessions.get(session_id, [])
-    def _is_construction_related(self, query: str) -> bool:
-        """Check if query is related to construction"""
-        construction_keywords = [
-            'remodel', 'renovation', 'addition', 'adu', 'permit', 'cost', 
-            'build', 'construction', 'contractor', 'design', 'kitchen',
-            'bathroom', 'zoning', 'finance', 'loan', 'estimate', 'project',
-            'floor', 'roof', 'foundation', 'electrical', 'plumbing',
-            'square', 'footage', 'sq ft', 'budget', 'timeline', 'price',
-            'how much', 'quote', 'expense'
-        ]
-        query_lower = query.lower()
-        return any(keyword in query_lower for keyword in construction_keywords)
+            # Return a helpful error message
+            return {
+                "message": "I encountered an error while processing your request. Please try again.",
+                "session_id": session_id,
+                "error": str(e)
+            }
