@@ -67,31 +67,37 @@ class RAGService:
                     "message": "I couldn't find specific information about that. Can you please rephrase your question?",
                     "source_documents": []
                 }
-            # Extract context from search results
+            # Extract and format context more concisely
             context_parts = []
             docs = []
+            # Group similar projects
+            project_groups = {}
             for match in search_results.matches:
                 if match.metadata:
-                    # Format the metadata into readable text
-                    doc_text = f"Project: {match.metadata.get('remodel_type', '').replace('_', ' ').title()}\n"
-                    doc_text += f"Location: {match.metadata.get('location', 'Unknown')}\n"
-                    doc_text += f"Cost Range: ${match.metadata.get('cost_low', 0):,} - ${match.metadata.get('cost_high', 0):,}\n"
-                    doc_text += f"Average Cost: ${match.metadata.get('cost_average', 0):,}\n"
-                    doc_text += f"Timeline: {match.metadata.get('timeline', 'Unknown')} weeks"
-                    context_parts.append(doc_text)
-                    docs.append({
-                        'content': doc_text,
-                        'metadata': match.metadata
-                    })
-            context = "\n\n".join(context_parts)
+                    key = f"{match.metadata.get('remodel_type', '')}_{match.metadata.get('location', '')}"
+                    if key not in project_groups:
+                        project_groups[key] = []
+                    project_groups[key].append(match.metadata)
+            # Format grouped data
+            for key, group in project_groups.items():
+                if group:
+                    # Average the costs across similar projects
+                    avg_low = sum(p.get('cost_low', 0) for p in group) / len(group)
+                    avg_high = sum(p.get('cost_high', 0) for p in group) / len(group)
+                    avg_cost = sum(p.get('cost_average', 0) for p in group) / len(group)
+                    project_type = group[0].get('remodel_type', '').replace('_', ' ').title()
+                    location = group[0].get('location', 'Unknown')
+                    timeline = group[0].get('timeline', 'Unknown')
+                    context_parts.append(f"{project_type} in {location}: ${avg_low:,.0f}-${avg_high:,.0f} (avg ${avg_cost:,.0f}), {timeline} weeks")
+            context = "\n".join(context_parts)
             print(f"Context length: {len(context)} characters")
-            # Create prompt
-            prompt = f"""You are a construction cost estimation assistant specializing in California remodeling projects, specifically serving San Diego and Los Angeles.
-Based on the construction data below, provide accurate cost estimates, timelines, and material recommendations.
-Construction data:
+            # Create a more focused prompt
+            prompt = f"""You are a helpful construction cost advisor for California, specifically serving San Diego and Los Angeles. 
+Provide concise, accurate estimates based on the data below. Keep your response brief and conversational.
+Data:
 {context}
 Question: {query}
-Answer:"""
+Provide a clear, concise answer with key cost ranges and timelines. If asked about a specific location, focus on that area."""
             print("Calling LLM...")
             # Get completion from LLM
             response = await self.llm.ainvoke(prompt)
