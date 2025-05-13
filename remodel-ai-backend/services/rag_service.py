@@ -21,7 +21,7 @@ class RAGService:
         # Initialize Pinecone with better error handling
         try:
             # Initialize Pinecone client
-            pc = pinecone.Pinecone(api_key=settings.pinecone_api_key)
+            pc = Pinecone(api_key=settings.pinecone_api_key)
             # Check if index exists
             indexes = pc.list_indexes()
             index_names = [idx.name for idx in indexes]
@@ -86,3 +86,4 @@ Answer:"""
                 "message": "I encountered an error while processing your request. Please try again.",
                 "source_documents": []
             }
+
