@@ -19,6 +19,7 @@ const PROJECT_TYPE_MAP: Record<string, string> = {
 const PROPERTY_TYPE_MAP: Record<string, string> = {
   'SFR': 'single_family',
   'Single Family Residence': 'single_family',
+  'Single Family': 'single_family',
   'Condo': 'condo',
   'Townhouse': 'townhouse',
   'Multi Family': 'multi_family'
@@ -47,9 +48,15 @@ function transformProjectDetails(details: any): any {
   if (transformed.property_type) {
     transformed.property_type = PROPERTY_TYPE_MAP[details.propertyType] || details.propertyType.toLowerCase().replace(/ /g, '_');
   }
-  // Ensure square_footage is a number
+  // Ensure square_footage is a valid number
   if (transformed.square_footage !== undefined) {
-    transformed.square_footage = transformed.square_footage ? parseFloat(transformed.square_footage) : 0;
+    const squareFootage = parseFloat(transformed.square_footage) || 0;
+    // Use a default value if it's 0 or invalid
+    transformed.square_footage = squareFootage > 0 ? squareFootage : 1000; // Default to 1000 sq ft
+  }
+  // Remove empty optional fields
+  if (!transformed.additional_details) {
+    delete transformed.additional_details;
   }
   return transformed;
 }
@@ -76,6 +83,7 @@ export const api = {
   async createEstimate(projectDetails: any) {
     // Transform the details to match backend expectations
     const transformedDetails = transformProjectDetails(projectDetails);
+    console.log('Sending to backend:', transformedDetails); // Debug log
     const response = await fetch(`${API_BASE_URL}/api/v1/estimate/`, {
       method: 'POST',
       headers: {
