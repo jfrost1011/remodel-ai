@@ -1,7 +1,7 @@
 import os
 from typing import List, Dict, Any, Optional
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_pinecone import PineconeVectorStore
+from langchain.vectorstores import Pinecone
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from config import settings
@@ -21,8 +21,8 @@ class RAGService:
             temperature=0.1,
             openai_api_key=settings.openai_api_key
         )
-        # Create vector store using the modern PineconeVectorStore
-        self.vectorstore = PineconeVectorStore.from_existing_index(
+        # Create vector store using the modern Pinecone
+        self.vectorstore = Pinecone.from_existing_index(
             index_name=settings.pinecone_index,
             embedding=self.embeddings
         )
