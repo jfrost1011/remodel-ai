@@ -1,5 +1,4 @@
 from typing import List, Dict, Any, Optional
-from schemas import ChatMessage, ChatResponse
 from services.rag_service import RAGService
 from services.session_service import SessionService
 import logging
