@@ -194,7 +194,7 @@ Keep your response conversational and brief."""
             
             # Need to search for new data
             if (not context['location'] or not context['project_type']) and not (context.get('is_quality_question') or context.get('is_followup')):
-            return {
+                return {
                     "message": "I need more information to provide an accurate estimate. What type of project are you interested in, and in which city (San Diego or Los Angeles)?",
                     "source_documents": []
                 }
