@@ -2,6 +2,7 @@
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+    console.log("Chat API received:", body)
     // Get the backend URL from environment variable or default to localhost:8000
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
     // Forward the request to the backend API - note the trailing slash
@@ -25,3 +26,4 @@ export async function POST(request: Request) {
     }, { status: 500 })
   }
 }
+
