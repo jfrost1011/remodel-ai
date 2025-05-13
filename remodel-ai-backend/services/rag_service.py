@@ -32,16 +32,17 @@ class RAGService:
                 self.vectorstore = None
                 self.qa_chain = None
             else:
-                # Initialize vector store with environment
+                # Initialize vector store
                 self.vectorstore = Pinecone.from_existing_index(
                     index_name=settings.pinecone_index,
-                    embedding=self.embeddings,
-                    namespace=""  # Use default namespace
+                    embedding=self.embeddings
                 )
                 self._setup_qa_chain()
                 print("Pinecone vector store initialized successfully")
         except Exception as e:
             print(f"Warning: Could not initialize Pinecone: {str(e)}")
+            import traceback
+            traceback.print_exc()
             self.vectorstore = None
             self.qa_chain = None
     def _setup_qa_chain(self):
@@ -58,13 +59,31 @@ Context: {context}
 Chat History: {chat_history}
 Question: {question}
 Answer:"""
-        self.qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=self.llm,
-            retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5}),
-            combine_docs_chain_type="stuff",
-            verbose=False,
-            return_source_documents=True
+        # Create prompt template
+        from langchain.prompts import PromptTemplate
+        prompt = PromptTemplate(
+            template=prompt_template,
+            input_variables=["context", "chat_history", "question"]
         )
+        try:
+            # Initialize the QA chain without the problematic parameter
+            self.qa_chain = ConversationalRetrievalChain.from_llm(
+                llm=self.llm,
+                retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5}),
+                verbose=False,
+                return_source_documents=True,
+                combine_docs_chain_kwargs={"prompt": prompt}
+            )
+        except Exception as e:
+            print(f"Error creating QA chain: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Try simpler initialization
+            self.qa_chain = ConversationalRetrievalChain.from_llm(
+                llm=self.llm,
+                retriever=self.vectorstore.as_retriever(),
+                return_source_documents=True
+            )
     async def get_chat_response(self, query: str, chat_history: list) -> Dict[str, Any]:
         """Get response from the RAG system"""
         if not self.qa_chain:
