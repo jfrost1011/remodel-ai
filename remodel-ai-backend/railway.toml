@@ -1,9 +1,6 @@
 [build]
 builder = "nixpacks"
 [phases.setup]
-nixPkgs = ["python311"]
-[phases.install]
-dependsOn = ["setup"]
-cmds = ["pip install setuptools wheel", "pip install -r requirements.txt"]
-[deploy]
-startCommand = "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
+nixPkgs = ["python311", "gcc"]
+[start]
+cmd = "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
