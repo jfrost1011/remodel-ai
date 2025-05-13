@@ -153,7 +153,7 @@ export default function Home() {
     }
   }
 
-  const handleProjectDetailsSubmit = (details: ProjectDetails) => {
+  const handleProjectDetailsSubmit = async (details: ProjectDetails) => {
     setProjectDetails(details)
     setIsProjectDetailsOpen(false)
     setIsLoading(true)
@@ -267,6 +267,7 @@ export default function Home() {
     </div>
   )
 }
+
 
 
 
