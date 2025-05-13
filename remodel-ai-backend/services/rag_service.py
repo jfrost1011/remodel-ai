@@ -1,8 +1,8 @@
 ﻿import os
 from typing import Optional, List, Dict, Any, Tuple
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Pinecone
+from langchain_openai import ChatOpenAI
 from pinecone import Pinecone as PineconeClient
+import openai
 from config import settings
 class RAGService:
     def __init__(self):
@@ -12,10 +12,8 @@ class RAGService:
             model_name=settings.openai_model,
             temperature=0.7
         )
-        self.embeddings = OpenAIEmbeddings(
-            openai_api_key=settings.openai_api_key,
-            model=settings.embedding_model
-        )
+        # Initialize OpenAI client directly
+        self.openai_client = openai.OpenAI(api_key=settings.openai_api_key)
         # Initialize Pinecone with better error handling
         try:
             # Initialize Pinecone client
@@ -27,41 +25,65 @@ class RAGService:
             print(f"Looking for index: {settings.pinecone_index}")
             if settings.pinecone_index not in index_names:
                 print(f"Warning: Pinecone index '{settings.pinecone_index}' not found.")
-                self.vectorstore = None
+                self.index = None
             else:
-                # Initialize vector store
-                self.vectorstore = Pinecone.from_existing_index(
-                    index_name=settings.pinecone_index,
-                    embedding=self.embeddings
-                )
-                print("Pinecone vector store initialized successfully")
+                # Initialize Pinecone index
+                self.index = pc.Index(settings.pinecone_index)
+                print("Pinecone index initialized successfully")
         except Exception as e:
             print(f"Warning: Could not initialize Pinecone: {str(e)}")
             import traceback
             traceback.print_exc()
-            self.vectorstore = None
+            self.index = None
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
         """Get response from the RAG system"""
         print(f"Getting chat response for query: {query}")
-        if not self.vectorstore:
-            print("No vectorstore available")
+        if not self.index:
+            print("No Pinecone index available")
             return {
                 "message": "I'm sorry, but I'm having trouble accessing the construction database. Please check back later.",
                 "source_documents": []
             }
         try:
-            # Search for relevant documents
-            print(f"Searching for documents with query: {query}")
-            docs = self.vectorstore.similarity_search(query, k=5)
-            print(f"Found {len(docs)} documents")
-            if not docs:
+            # Create embedding using OpenAI directly
+            print(f"Creating embedding for query: {query}")
+            embedding_response = self.openai_client.embeddings.create(
+                input=query,
+                model=settings.embedding_model
+            )
+            query_embedding = embedding_response.data[0].embedding
+            # Search for relevant documents in Pinecone
+            print(f"Searching Pinecone for relevant documents...")
+            search_results = self.index.query(
+                vector=query_embedding,
+                top_k=5,
+                include_metadata=True,
+                namespace=""
+            )
+            print(f"Found {len(search_results.matches)} matches")
+            if not search_results.matches:
                 print("No documents found")
                 return {
                     "message": "I couldn't find specific information about that. Can you please rephrase your question?",
                     "source_documents": []
                 }
-            # Extract context from documents
-            context = "\n\n".join([doc.page_content for doc in docs])
+            # Extract context from search results
+            context_parts = []
+            docs = []
+            for match in search_results.matches:
+                if match.metadata:
+                    # Format the metadata into readable text
+                    doc_text = f"Project: {match.metadata.get('remodel_type', '').replace('_', ' ').title()}\n"
+                    doc_text += f"Location: {match.metadata.get('location', 'Unknown')}\n"
+                    doc_text += f"Cost Range: ${match.metadata.get('cost_low', 0):,} - ${match.metadata.get('cost_high', 0):,}\n"
+                    doc_text += f"Average Cost: ${match.metadata.get('cost_average', 0):,}\n"
+                    doc_text += f"Timeline: {match.metadata.get('timeline', 'Unknown')} weeks"
+                    context_parts.append(doc_text)
+                    docs.append({
+                        'content': doc_text,
+                        'metadata': match.metadata
+                    })
+            context = "\n\n".join(context_parts)
             print(f"Context length: {len(context)} characters")
             # Create prompt
             prompt = f"""You are a construction cost estimation assistant specializing in California remodeling projects, specifically serving San Diego and Los Angeles.
