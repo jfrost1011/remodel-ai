@@ -11,7 +11,5 @@ RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 # Copy the application
 COPY . .
-# Set PORT environment variable
-ENV PORT=8000
-# Run the application  
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$PORT"]
+# Run the application with proper port handling
+CMD python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
