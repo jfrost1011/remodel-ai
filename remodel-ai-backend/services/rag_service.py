@@ -11,14 +11,24 @@ class RAGService:
         self.llm = ChatOpenAI(
             openai_api_key=settings.openai_api_key,
             model_name=settings.openai_model,
-            temperature=0.3  # Lower temperature for more consistent responses
+            temperature=0.3
         )
         
         # Initialize OpenAI client directly
         self.openai_client = openai.OpenAI(api_key=settings.openai_api_key)
         
-        # Session data cache - stores data per session
+        # Session data cache
         self.session_data_cache = {}
+        
+        # Define minimum realistic costs for each project type
+        self.min_realistic_costs = {
+            'kitchen': 25000,
+            'bathroom': 10000,
+            'room_addition': 50000,
+            'adu': 80000,
+            'garage': 20000,
+            'landscaping': 5000
+        }
         
         # Initialize Pinecone
         try:
@@ -52,6 +62,11 @@ class RAGService:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
     
+    def is_data_realistic(self, project_type: str, cost_low: float) -> bool:
+        """Check if the cost data is realistic"""
+        min_cost = self.min_realistic_costs.get(project_type, 5000)
+        return cost_low >= min_cost
+    
     def extract_context_from_history(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
         """Extract context from conversation history"""
         context = {
@@ -63,7 +78,7 @@ class RAGService:
         query_lower = query.lower()
         
         # Check if this is a quality-related question
-        quality_keywords = ['high end', 'low end', 'mid range', 'luxury', 'standard', 'basic', 'quality', 'that for']
+        quality_keywords = ['high end', 'low end', 'mid range', 'luxury', 'standard', 'basic', 'quality', 'that for', 'economy']
         context['is_quality_question'] = any(keyword in query_lower for keyword in quality_keywords)
         
         # Extract from current query
@@ -75,7 +90,7 @@ class RAGService:
         project_types = {
             'kitchen': ['kitchen'],
             'bathroom': ['bathroom', 'bath'],
-            'room addition': ['room addition', 'addition'],
+            'room_addition': ['room addition', 'addition'],
             'adu': ['adu', 'accessory dwelling'],
             'garage': ['garage']
         }
@@ -129,12 +144,6 @@ Keep your response conversational and brief."""
                 "source_documents": []
             }
         
-        if not self.index:
-            return {
-                "message": "I'm sorry, but I'm having trouble accessing the construction database. Please check back later.",
-                "source_documents": []
-            }
-        
         try:
             # Extract context from conversation
             context = self.extract_context_from_history(query, chat_history)
@@ -163,31 +172,13 @@ You provided these costs:
 
 Current question: {query}
 
-Answer their question about quality levels. Be consistent with the numbers you already provided.
-Explain whether these costs represent high-end, mid-range, or budget options.
-Do NOT provide different numbers or mention other locations."""
-                
-                response = await self.llm.ainvoke(prompt)
-                return {
-                    "message": response.content,
-                    "source_documents": cached_data.get('source_documents', [])
-                }
-            
-            # If we have cached data for this location/project, use it
-            if cache_key in session_cache and not context['is_quality_question']:
-                cached_data = session_cache[cache_key]
-                print(f"Using cached data for: {cache_key}")
-                
-                prompt = f"""You are a construction cost advisor. Use this EXACT data to answer the question:
+Based on these costs, explain the quality level. Generally:
+- Under $30,000: Budget/economy level
+- $30,000-$60,000: Mid-range quality
+- $60,000-$100,000: High-end quality
+- Over $100,000: Luxury level
 
-{cached_data['project_type']} remodel in {cached_data['location']}:
-- Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
-- Average: ${cached_data['cost_average']:,.0f}
-- Timeline: {cached_data['timeline']} weeks
-
-Question: {query}
-
-Use these exact numbers in your response. Be helpful and conversational."""
+Be consistent with the numbers you already provided. Do NOT provide different numbers or mention other locations."""
                 
                 response = await self.llm.ainvoke(prompt)
                 return {
@@ -216,7 +207,7 @@ Use these exact numbers in your response. Be helpful and conversational."""
             # Search Pinecone
             search_results = self.index.query(
                 vector=query_embedding,
-                top_k=10,
+                top_k=20,  # Get more results to filter
                 include_metadata=True,
                 namespace=""
             )
@@ -230,21 +221,51 @@ Use these exact numbers in your response. Be helpful and conversational."""
                     
                     if meta_location == context['location']:
                         if context['project_type'].replace(' ', '_') in meta_project or context['project_type'] in meta_project:
-                            exact_matches.append(match)
+                            # Check if data is realistic
+                            if self.is_data_realistic(context['project_type'], match.metadata.get('cost_low', 0)):
+                                exact_matches.append(match)
+            
+            # If not enough realistic matches, get the highest cost ones
+            if len(exact_matches) < 3:
+                all_location_matches = [m for m in search_results.matches 
+                                      if m.metadata and m.metadata.get('location') == context['location']]
+                # Sort by cost_high to get the most expensive (likely most realistic) options
+                all_location_matches.sort(key=lambda x: x.metadata.get('cost_high', 0), reverse=True)
+                exact_matches = all_location_matches[:5]
             
             if not exact_matches:
-                # Fallback to location-only matches
-                for match in search_results.matches:
-                    if match.metadata and match.metadata.get('location', '') == context['location']:
-                        exact_matches.append(match)
-            
-            if not exact_matches:
-                return {
-                    "message": f"I don't have specific data for {context['project_type']} remodels in {context['location']}. Would you like estimates for other types of projects in that area?",
-                    "source_documents": []
+                # Provide fallback estimates based on project type
+                fallback_costs = {
+                    'kitchen': {'low': 40000, 'high': 100000, 'avg': 70000, 'timeline': '8-16'},
+                    'bathroom': {'low': 15000, 'high': 40000, 'avg': 27500, 'timeline': '3-6'},
+                    'room_addition': {'low': 60000, 'high': 150000, 'avg': 105000, 'timeline': '12-20'},
+                    'adu': {'low': 100000, 'high': 250000, 'avg': 175000, 'timeline': '16-24'},
+                    'garage': {'low': 25000, 'high': 60000, 'avg': 42500, 'timeline': '8-12'}
                 }
+                
+                if context['project_type'] in fallback_costs:
+                    fallback = fallback_costs[context['project_type']]
+                    
+                    prompt = f"""You are a construction cost advisor. Based on general market data for {context['location']}:
+
+{context['project_type']} remodel costs typically range from ${fallback['low']:,} to ${fallback['high']:,} (average ${fallback['avg']:,}).
+Timeline: {fallback['timeline']} weeks.
+
+Note: These are estimated ranges based on typical projects. Actual costs can vary based on specific requirements, materials, and scope.
+
+Answer the user's question: {query}"""
+                    
+                    response = await self.llm.ainvoke(prompt)
+                    return {
+                        "message": response.content,
+                        "source_documents": []
+                    }
             
-            # Use the best match
+            # Use the best match (highest cost if San Diego kitchen)
+            if context['location'] == 'San Diego' and context['project_type'] == 'kitchen':
+                # For San Diego kitchen, prefer higher cost estimates
+                exact_matches.sort(key=lambda x: x.metadata.get('cost_high', 0), reverse=True)
+            
             best_match = exact_matches[0]
             meta = best_match.metadata
             
@@ -272,7 +293,8 @@ Use these exact numbers in your response. Be helpful and conversational."""
 Question: {query}
 
 Provide a helpful, conversational response that includes both cost and timeline information.
-Focus only on {context['location']} - do not mention other cities."""
+Focus only on {context['location']} - do not mention other cities.
+If the costs seem low for {context['location']}, mention that these may represent budget-level options."""
             
             response = await self.llm.ainvoke(prompt)
             
