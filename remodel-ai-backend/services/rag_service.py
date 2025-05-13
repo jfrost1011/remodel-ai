@@ -126,8 +126,8 @@ class RAGService:
         
             return context
 
-        async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
-            """Get response from the RAG system"""
+            async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get response from the RAG system"""
         print(f"Getting chat response for query: {query}")
         
         # Handle non-construction queries
@@ -141,6 +141,12 @@ Keep your response conversational and brief."""
             response = await self.llm.ainvoke(prompt)
             return {
                 "message": response.content,
+                "source_documents": []
+            }
+        
+        if not self.index:
+            return {
+                "message": "I'm sorry, but I'm having trouble accessing the construction database. Please check back later.",
                 "source_documents": []
             }
         
@@ -163,32 +169,32 @@ Keep your response conversational and brief."""
                 cached_data = session_cache[cache_key]
                 print(f"Using cached data for quality question: {cache_key}")
                 
-                prompt = f"""You are a construction cost advisor. The user previously asked about {cached_data['project_type']} remodel in {cached_data['location']}.
+            prompt = f"""You are a construction cost advisor. The user previously asked about {cached_data['project_type']} remodel in {cached_data['location']}.
 
-You provided these costs:
-- Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
-- Average: ${cached_data['cost_average']:,.0f}
-- Timeline: {cached_data['timeline']} weeks
+            You provided these costs:
+            - Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
+            - Average: ${cached_data['cost_average']:,.0f}
+            - Timeline: {cached_data['timeline']} weeks
 
-Current question: {query}
+            Current question: {query}
 
-Based on these costs, explain the quality level. Generally:
-- Under $30,000: Budget/economy level
-- $30,000-$60,000: Mid-range quality
-- $60,000-$100,000: High-end quality
-- Over $100,000: Luxury level
+            Based on these costs, explain the quality level. Generally:
+            - Under $30,000: Budget/economy level
+            - $30,000-$60,000: Mid-range quality
+            - $60,000-$100,000: High-end quality
+            - Over $100,000: Luxury level
 
-Be consistent with the numbers you already provided. Do NOT provide different numbers or mention other locations."""
+            Be consistent with the numbers you already provided. Do NOT provide different numbers or mention other locations."""
                 
-                response = await self.llm.ainvoke(prompt)
-                return {
+            response = await self.llm.ainvoke(prompt)
+            return {
                     "message": response.content,
                     "source_documents": cached_data.get('source_documents', [])
                 }
             
             # Need to search for new data
             if (not context['location'] or not context['project_type']) and not (context.get('is_quality_question') or context.get('is_followup')):
-                return {
+            return {
                     "message": "I need more information to provide an accurate estimate. What type of project are you interested in, and in which city (San Diego or Los Angeles)?",
                     "source_documents": []
                 }
