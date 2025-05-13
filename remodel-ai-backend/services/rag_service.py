@@ -1,11 +1,11 @@
-﻿import os
+import os
 from typing import Optional, List, Dict, Any
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Pinecone as LangChainPinecone
+from langchain_community.vectorstores import Pinecone
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ChatMessageHistory, ConversationBufferMemory
 from langchain.prompts import ChatPromptTemplate
-from pinecone import Pinecone
+from pinecone import Pinecone as PineconeClient
 from config import settings
 class RAGService:
     def __init__(self):
@@ -21,22 +21,22 @@ class RAGService:
         # Initialize Pinecone with better error handling
         try:
             # Initialize Pinecone client
-            pc = Pinecone(api_key=settings.pinecone_api_key)
+            pc = PineconeClient(api_key=settings.pinecone_api_key)
             # Check if index exists
             indexes = pc.list_indexes()
-            index_names = [idx.name for idx in indexes.indexes] if hasattr(indexes, 'indexes') else indexes
+            index_names = [idx.name for idx in indexes.indexes] if hasattr(indexes, 'indexes') else [idx.name for idx in indexes]
             print(f"Available Pinecone indexes: {index_names}")
             print(f"Looking for index: {settings.pinecone_index}")
             if settings.pinecone_index not in index_names:
                 print(f"Warning: Pinecone index '{settings.pinecone_index}' not found.")
-                # Don't fail immediately - allow app to start
                 self.vectorstore = None
                 self.qa_chain = None
             else:
-                # Initialize vector store using LangChain's Pinecone integration
-                self.vectorstore = LangChainPinecone.from_existing_index(
+                # Initialize vector store with environment
+                self.vectorstore = Pinecone.from_existing_index(
                     index_name=settings.pinecone_index,
-                    embedding=self.embeddings
+                    embedding=self.embeddings,
+                    namespace=""  # Use default namespace
                 )
                 self._setup_qa_chain()
                 print("Pinecone vector store initialized successfully")
@@ -68,7 +68,6 @@ Answer:"""
     async def get_chat_response(self, query: str, chat_history: list) -> Dict[str, Any]:
         """Get response from the RAG system"""
         if not self.qa_chain:
-            # Fallback response if Pinecone isn't initialized
             return {
                 "message": "I'm currently having trouble accessing the construction database. However, I can still help with general questions about remodeling in San Diego and Los Angeles. What would you like to know?",
                 "source_documents": []
