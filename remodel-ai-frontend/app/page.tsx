@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState } from "react"
 import { Navbar } from "@/components/navbar"
@@ -140,7 +140,7 @@ export default function Home() {
       // If the API returned estimate data, update the state
       if (estimateData) {
         setCostBreakdown(estimateData.costBreakdown)
-      setEstimateId(estimateId)
+      setEstimateId(estimateData?.estimateId || "")
         setTimeline(estimateData.timeline)
         setConfidence(estimateData.confidence)
       }
@@ -168,7 +168,7 @@ export default function Home() {
 
       // Update state with estimate data
       setCostBreakdown(estimateData.costBreakdown)
-      setEstimateId(estimateId)
+      setEstimateId(estimateData?.estimateId || "")
       setTimeline(estimateData.timeline)
       setConfidence(estimateData.confidence)
 
@@ -267,6 +267,7 @@ export default function Home() {
     </div>
   )
 }
+
 
 
 
