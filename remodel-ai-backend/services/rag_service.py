@@ -102,7 +102,8 @@ class RAGService:
                     break
         
         # If not found in current query, check history
-        if not context['location'] or not context['project_type']:
+            # Check if we're missing context but this isn't a follow-up question
+            if (not context['location'] or not context['project_type']) and not (context.get('is_quality_question') or context.get('is_followup')):
             # Look through history from most recent to oldest
             for human, ai in reversed(chat_history):
                 human_lower = human.lower()
@@ -187,7 +188,7 @@ Be consistent with the numbers you already provided. Do NOT provide different nu
                 }
             
             # Need to search for new data
-            if not context['location'] or not context['project_type']:
+            if (not context['location'] or not context['project_type']) and not (context.get('is_quality_question') or context.get('is_followup')):
                 return {
                     "message": "I need more information to provide an accurate estimate. What type of project are you interested in, and in which city (San Diego or Los Angeles)?",
                     "source_documents": []
