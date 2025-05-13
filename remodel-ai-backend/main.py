@@ -27,7 +27,8 @@ app = FastAPI(
     title="RemodelAI API",
     description="AI-powered remodeling cost estimation API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False  # Disable automatic slash redirects
 )
 # CORS middleware with specific origins
 allowed_origins = [
