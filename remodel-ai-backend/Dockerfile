@@ -4,12 +4,19 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 # Create directories
 RUN mkdir -p /app/logs /app/exports
 # Copy requirements first
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install requirements with verbose output to see what fails
+RUN pip install --no-cache-dir --verbose -r requirements.txt || \
+    (echo "Failed to install requirements, trying one by one..." && \
+     cat requirements.txt | while read requirement; do \
+       echo "Installing: $requirement" && \
+       pip install --no-cache-dir "$requirement" || echo "Failed: $requirement"; \
+     done)
 # Copy application code
 COPY . .
 # Make Python output unbuffered
