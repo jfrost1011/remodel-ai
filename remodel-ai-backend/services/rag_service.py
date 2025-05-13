@@ -1,111 +1,88 @@
 import os
-from typing import List, Dict, Any, Optional
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.vectorstores import Pinecone
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
+from typing import Optional, List, Dict, Any
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import Pinecone
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ChatMessageHistory, ConversationBufferMemory
+from langchain.prompts import ChatPromptTemplate
+import pinecone
 from config import settings
-import logging
-logger = logging.getLogger(__name__)
 class RAGService:
     def __init__(self):
-        # Set environment variable for Pinecone
-        os.environ["PINECONE_API_KEY"] = settings.pinecone_api_key
-        # Initialize embeddings
-        self.embeddings = OpenAIEmbeddings(
-            openai_api_key=settings.openai_api_key
-        )
-        # Initialize LLM
         self.llm = ChatOpenAI(
-            model=settings.openai_model,
-            temperature=0.1,
-            openai_api_key=settings.openai_api_key
+            openai_api_key=settings.openai_api_key,
+            model_name=settings.openai_model,
+            temperature=0.7
         )
-        # Create vector store using the modern Pinecone
-        self.vectorstore = Pinecone.from_existing_index(
-            index_name=settings.pinecone_index,
-            embedding=self.embeddings
+        self.embeddings = OpenAIEmbeddings(
+            openai_api_key=settings.openai_api_key,
+            model=settings.embedding_model
         )
-        # Create QA chain
-        self._setup_qa_chain()
-    def _setup_qa_chain(self):
-        """Set up the QA chain with custom prompt"""
-        prompt_template = """You are a California residential construction expert AI assistant. You have access to a database of construction projects with costs and timelines.
-Context from database: {context}
-Question: {question}
-Based on the context above, provide specific cost estimates and timelines. Use the actual numbers from the database.
-If the question refers to something mentioned earlier, use context clues to understand what it refers to.
-Answer:"""
-        prompt = PromptTemplate(
-            template=prompt_template,
-            input_variables=["context", "question"]
-        )
-        self.qa_chain = RetrievalQA.from_chain_type(
-            llm=self.llm,
-            chain_type="stuff",
-            retriever=self.vectorstore.as_retriever(
-                search_kwargs={"k": 5}
-            ),
-            chain_type_kwargs={"prompt": prompt}
-        )
-    async def get_chat_response(self, query: str, chat_history: List[Dict[str, str]]) -> Dict[str, Any]:
-        """Get a response for chat interface"""
+        # Initialize Pinecone with better error handling
         try:
-            # Create enhanced query with conversation context
-            enhanced_query = query
-            if chat_history and len(chat_history) > 1:
-                # Build context from previous messages
-                context_parts = []
-                for msg in chat_history[-4:-1]:  # Get last few messages except current
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    context_parts.append(f"{role}: {msg['content']}")
-                # Add context to the query
-                enhanced_query = f"Previous conversation:\n" + "\n".join(context_parts) + f"\n\nCurrent question: {query}"
-            # Use invoke
-            response = self.qa_chain.invoke({"query": enhanced_query})
-            # Extract the result from the response
-            if isinstance(response, dict) and "result" in response:
-                message = response["result"]
+            # Initialize Pinecone client
+            pc = pinecone.Pinecone(api_key=settings.pinecone_api_key)
+            # Check if index exists
+            indexes = pc.list_indexes()
+            index_names = [idx.name for idx in indexes]
+            if settings.pinecone_index not in index_names:
+                print(f"Warning: Pinecone index '{settings.pinecone_index}' not found.")
+                print(f"Available indexes: {index_names}")
+                # Don't fail immediately - allow app to start
+                self.vectorstore = None
+                self.qa_chain = None
             else:
-                message = str(response)
+                # Initialize vector store
+                self.vectorstore = Pinecone.from_existing_index(
+                    index_name=settings.pinecone_index,
+                    embedding=self.embeddings
+                )
+                self._setup_qa_chain()
+        except Exception as e:
+            print(f"Warning: Could not initialize Pinecone: {str(e)}")
+            self.vectorstore = None
+            self.qa_chain = None
+    def _setup_qa_chain(self):
+        """Setup the QA chain if vectorstore is available"""
+        if not self.vectorstore:
+            return
+        prompt_template = """You are a construction cost estimation assistant specializing in California remodeling projects, specifically serving San Diego and Los Angeles (not LA County). You ONLY provide estimates for these two cities.
+When users mention:
+- "LA" -> interpret as Los Angeles city
+- "Los Angeles County" or "LA County" -> politely clarify you only serve Los Angeles city
+- Any other California city -> politely inform them you only serve San Diego and Los Angeles
+Based on the retrieved construction data, provide accurate cost estimates, timelines, and material recommendations. Format your responses clearly with cost breakdowns when applicable.
+Context: {context}
+Chat History: {chat_history}
+Question: {question}
+Answer:"""
+        self.qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=self.llm,
+            retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5}),
+            combine_docs_chain_type="stuff",
+            verbose=False,
+            return_source_documents=True
+        )
+    async def get_chat_response(self, query: str, chat_history: list) -> Dict[str, Any]:
+        """Get response from the RAG system"""
+        if not self.qa_chain:
+            # Fallback response if Pinecone isn't initialized
             return {
-                "message": message,
-                "type": "text",
-                "metadata": {
-                    "confidence": 0.85,
-                    "sources_used": 5
-                }
+                "message": "I'm currently having trouble accessing the construction database. However, I can still help with general questions about remodeling in San Diego and Los Angeles. What would you like to know?",
+                "source_documents": []
+            }
+        try:
+            response = await self.qa_chain.ainvoke({
+                "question": query,
+                "chat_history": chat_history
+            })
+            return {
+                "message": response["answer"],
+                "source_documents": response.get("source_documents", [])
             }
         except Exception as e:
-            logger.error(f"Error in chat response: {str(e)}")
-            raise
-    async def get_estimate(self, query: str, project_details: Dict[str, Any]) -> Dict[str, Any]:
-        """Get a detailed estimate from the RAG system"""
-        try:
-            enhanced_query = f"""
-            Provide a cost estimate for a {project_details.get('project_type')} project in {project_details.get('city')}.
-            Property type: {project_details.get('property_type')}
-            Square footage: {project_details.get('square_footage')}
-            Use the specific cost data from the database for this location and project type.
-            """
-            response = self.qa_chain.invoke({"query": enhanced_query})
-            # Extract the result
-            if isinstance(response, dict) and "result" in response:
-                result = response["result"]
-            else:
-                result = str(response)
-            return self._parse_estimate_response(result)
-        except Exception as e:
-            logger.error(f"Error generating estimate: {str(e)}")
-            raise
-    def _parse_estimate_response(self, response: str) -> Dict[str, Any]:
-        """Parse the LLM response to extract structured estimate data"""
-        return {
-            "total_cost": 75000,
-            "cost_range_low": 65000,
-            "cost_range_high": 85000,
-            "confidence_score": 0.85,
-            "permit_days": 45,
-            "construction_days": 90,
-            "similar_projects": []
-        }
+            print(f"Error in get_chat_response: {str(e)}")
+            return {
+                "message": "I encountered an error while processing your request. Please try again.",
+                "source_documents": []
+            }
