@@ -4,7 +4,6 @@ from langchain_openai import ChatOpenAI
 from pinecone import Pinecone as PineconeClient
 import openai
 from config import settings
-import re
 import json
 
 class RAGService:
@@ -19,14 +18,14 @@ class RAGService:
         # Initialize OpenAI client directly
         self.openai_client = openai.OpenAI(api_key=settings.openai_api_key)
         
-        # Initialize Pinecone with better error handling
+        # Session data cache
+        self.session_cache = {}
+        
+        # Initialize Pinecone
         try:
             pc = PineconeClient(api_key=settings.pinecone_api_key)
             indexes = pc.list_indexes()
             index_names = [idx.name for idx in indexes.indexes] if hasattr(indexes, 'indexes') else [idx.name for idx in indexes]
-            
-            print(f"Available Pinecone indexes: {index_names}")
-            print(f"Looking for index: {settings.pinecone_index}")
             
             if settings.pinecone_index not in index_names:
                 print(f"Warning: Pinecone index '{settings.pinecone_index}' not found.")
@@ -37,8 +36,6 @@ class RAGService:
                 
         except Exception as e:
             print(f"Warning: Could not initialize Pinecone: {str(e)}")
-            import traceback
-            traceback.print_exc()
             self.index = None
     
     def is_construction_query(self, query: str) -> bool:
@@ -56,81 +53,15 @@ class RAGService:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
     
-    def extract_conversation_context(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
-        """Extract context from the entire conversation"""
-        # Build full conversation text
-        conversation = []
-        for human, ai in chat_history:
-            conversation.append(f"Human: {human}")
-            conversation.append(f"AI: {ai}")
-        conversation.append(f"Human: {query}")
-        
-        full_conversation = "\n".join(conversation)
-        
-        # Use GPT to understand the conversation context
-        context_prompt = f"""Analyze this conversation and extract the following information:
-1. What location is being discussed? (San Diego or Los Angeles)
-2. What type of project? (kitchen, bathroom, room addition, etc.)
-3. What specific aspect is being asked about in the current question? (cost, timeline, quality level)
-4. Is this a follow-up question to a previous topic?
-
-Conversation:
-{full_conversation}
-
-Respond with a JSON object containing:
-- location: the city being discussed (or null if unclear)
-- project_type: the type of remodel (or null if unclear)
-- aspect: what the current question is asking about
-- is_followup: true if this relates to a previous question
-- previous_context: any important context from earlier in the conversation
-"""
-        
-        try:
-            response = self.llm.invoke(context_prompt)
-            context = json.loads(response.content)
-            return context
-        except:
-            # Fallback to basic extraction
-            return {
-                'location': self._extract_location(full_conversation),
-                'project_type': self._extract_project_type(full_conversation),
-                'aspect': 'general',
-                'is_followup': len(chat_history) > 0,
-                'previous_context': ''
-            }
-    
-    def _extract_location(self, text: str) -> Optional[str]:
-        """Extract location from text"""
-        text_lower = text.lower()
-        if 'san diego' in text_lower:
-            return 'San Diego'
-        elif 'los angeles' in text_lower or ' la ' in text_lower:
-            return 'Los Angeles'
-        return None
-    
-    def _extract_project_type(self, text: str) -> Optional[str]:
-        """Extract project type from text"""
-        text_lower = text.lower()
-        project_types = {
-            'kitchen': ['kitchen'],
-            'bathroom': ['bathroom', 'bath'],
-            'room addition': ['room addition', 'addition'],
-            'adu': ['adu', 'accessory dwelling'],
-            'garage': ['garage'],
-            'landscaping': ['landscaping', 'landscape']
-        }
-        
-        for project_type, keywords in project_types.items():
-            for keyword in keywords:
-                if keyword in text_lower:
-                    return project_type
-        return None
+    def get_session_key(self, location: str, project_type: str) -> str:
+        """Create a consistent key for caching session data"""
+        return f"{location}_{project_type}".lower().replace(' ', '_')
 
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
         """Get response from the RAG system"""
         print(f"Getting chat response for query: {query}")
         
-        # Check if this is a construction-related query
+        # Handle non-construction queries
         if not self.is_construction_query(query):
             prompt = f"""You are a friendly AI assistant for a construction cost estimation service.
 The user said: "{query}"
@@ -145,29 +76,92 @@ Keep your response conversational and brief."""
             }
         
         if not self.index:
-            print("No Pinecone index available")
             return {
                 "message": "I'm sorry, but I'm having trouble accessing the construction database. Please check back later.",
                 "source_documents": []
             }
         
         try:
-            # Extract conversation context
-            context = self.extract_conversation_context(query, chat_history)
-            print(f"Extracted context: {context}")
+            # Extract context from conversation
+            location = None
+            project_type = None
             
-            # Build search query based on context
-            search_parts = []
-            if context.get('location'):
-                search_parts.append(context['location'])
-            if context.get('project_type'):
-                search_parts.append(context['project_type'])
-            search_parts.append(query)
+            # Check current query
+            query_lower = query.lower()
+            if 'san diego' in query_lower:
+                location = 'San Diego'
+            elif 'los angeles' in query_lower or ' la ' in query_lower:
+                location = 'Los Angeles'
             
-            search_query = " ".join(search_parts)
+            project_types = ['kitchen', 'bathroom', 'room addition', 'adu', 'garage', 'landscaping']
+            for pt in project_types:
+                if pt in query_lower:
+                    project_type = pt
+                    break
+            
+            # If not in current query, check chat history
+            if not location or not project_type:
+                full_conversation = []
+                for human, ai in chat_history:
+                    full_conversation.append(human.lower())
+                    full_conversation.append(ai.lower())
+                
+                conversation_text = " ".join(full_conversation)
+                
+                if not location:
+                    if 'san diego' in conversation_text:
+                        location = 'San Diego'
+                    elif 'los angeles' in conversation_text or ' la ' in conversation_text:
+                        location = 'Los Angeles'
+                
+                if not project_type:
+                    for pt in project_types:
+                        if pt in conversation_text:
+                            project_type = pt
+                            break
+            
+            print(f"Context - Location: {location}, Project Type: {project_type}")
+            
+            # Check if we have cached data for this location/project
+            session_key = None
+            if location and project_type:
+                session_key = self.get_session_key(location, project_type)
+                
+                if session_key in self.session_cache:
+                    print(f"Using cached data for {session_key}")
+                    cached_data = self.session_cache[session_key]
+                    
+                    # Use cached data to maintain consistency
+                    prompt = f"""You are a helpful construction cost advisor. 
+                    
+Previous conversation context:
+{json.dumps(chat_history[-3:], indent=2)}
+
+Current question: {query}
+
+You previously provided this information for {project_type} remodel in {location}:
+- Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
+- Average cost: ${cached_data['cost_average']:,.0f}
+- Timeline: {cached_data['timeline']} weeks
+
+Use this EXACT same data to answer the current question. Do not change the numbers.
+If asked about quality levels, explain what these numbers represent (e.g., if they're mid-range, high-end, etc.).
+Maintain consistency with your previous answers."""
+                    
+                    response = await self.llm.ainvoke(prompt)
+                    return {
+                        "message": response.content,
+                        "source_documents": []
+                    }
+            
+            # If no cached data, search for new data
+            search_query = query
+            if location:
+                search_query += f" {location}"
+            if project_type:
+                search_query += f" {project_type}"
             
             # Create embedding
-            print(f"Creating embedding for query: {search_query}")
             embedding_response = self.openai_client.embeddings.create(
                 input=search_query,
                 model=settings.embedding_model
@@ -175,7 +169,6 @@ Keep your response conversational and brief."""
             query_embedding = embedding_response.data[0].embedding
             
             # Search Pinecone
-            print(f"Searching Pinecone for relevant documents...")
             search_results = self.index.query(
                 vector=query_embedding,
                 top_k=10,
@@ -183,70 +176,65 @@ Keep your response conversational and brief."""
                 namespace=""
             )
             
-            print(f"Found {len(search_results.matches)} matches")
-            
-            # Filter by location if specified in context
+            # Filter results
             filtered_matches = []
             for match in search_results.matches:
                 if match.metadata:
-                    if context.get('location'):
-                        if match.metadata.get('location') == context['location']:
+                    if location and match.metadata.get('location') == location:
+                        if project_type and project_type in match.metadata.get('remodel_type', '').lower():
                             filtered_matches.append(match)
-                    else:
-                        filtered_matches.append(match)
             
-            # If too few matches, use all results
+            # If not enough matches, broaden search
             if len(filtered_matches) < 3:
+                for match in search_results.matches:
+                    if match.metadata:
+                        if location and match.metadata.get('location') == location:
+                            filtered_matches.append(match)
+            
+            if not filtered_matches:
                 filtered_matches = search_results.matches[:5]
             
-            # Format the data
-            data_points = []
-            for match in filtered_matches[:5]:
+            # Get the best match and cache it
+            best_match = filtered_matches[0]
+            if best_match.metadata and session_key:
+                # Cache this data for consistency
+                self.session_cache[session_key] = {
+                    'cost_low': best_match.metadata.get('cost_low', 0),
+                    'cost_high': best_match.metadata.get('cost_high', 0),
+                    'cost_average': best_match.metadata.get('cost_average', 0),
+                    'timeline': best_match.metadata.get('timeline', 'Unknown'),
+                    'project_type': best_match.metadata.get('remodel_type', ''),
+                    'location': best_match.metadata.get('location', '')
+                }
+            
+            # Format data for prompt
+            data_summary = []
+            for match in filtered_matches[:3]:
                 if match.metadata:
                     meta = match.metadata
-                    data_points.append({
-                        'project_type': meta.get('remodel_type', '').replace('_', ' ').title(),
-                        'location': meta.get('location', 'Unknown'),
-                        'cost_low': meta.get('cost_low', 0),
-                        'cost_high': meta.get('cost_high', 0),
-                        'cost_average': meta.get('cost_average', 0),
-                        'timeline': meta.get('timeline', 'Unknown'),
-                        'score': match.score
-                    })
+                    data_summary.append(
+                        f"- {meta.get('remodel_type', '').replace('_', ' ').title()} in {meta.get('location', '')}: "
+                        f"${meta.get('cost_low', 0):,.0f}-${meta.get('cost_high', 0):,.0f} "
+                        f"(avg ${meta.get('cost_average', 0):,.0f}), {meta.get('timeline', 'Unknown')} weeks"
+                    )
             
-            # Create a smart prompt that maintains context
-            data_summary = "\n".join([
-                f"- {d['project_type']} in {d['location']}: ${d['cost_low']:,.0f}-${d['cost_high']:,.0f} (avg ${d['cost_average']:,.0f}), {d['timeline']} weeks"
-                for d in data_points
-            ])
+            data_text = "\n".join(data_summary)
             
-            # Build conversation context for the prompt
-            conversation_context = ""
-            if chat_history:
-                recent_history = chat_history[-3:]  # Last 3 exchanges
-                conversation_context = "\nRecent conversation:\n"
-                for human, ai in recent_history:
-                    conversation_context += f"Human: {human}\n"
-                    conversation_context += f"AI: {ai}\n"
-            
-            prompt = f"""You are a helpful construction cost advisor for California, specifically serving San Diego and Los Angeles.
+            prompt = f"""You are a helpful construction cost advisor for California.
 
-{conversation_context}
 Current question: {query}
 
 Available data:
-{data_summary}
+{data_text}
 
 Instructions:
-1. If this is a follow-up question, use the context from the previous conversation
-2. Always maintain consistency with previous answers
-3. For the same project type and location, always provide the same costs and timelines
-4. Be specific about which city and project type you're discussing
-5. If asked about quality levels (high-end, mid-range, etc.), provide context about what the data represents
+1. Focus on the specific location and project type mentioned
+2. Do not mention other cities unless specifically asked
+3. Be consistent with any numbers you provide
+4. If asked about quality levels, explain what the data represents
 
-Provide a helpful, accurate response that maintains context from the conversation."""
+Provide a clear, helpful response."""
             
-            print("Calling LLM...")
             response = await self.llm.ainvoke(prompt)
             
             return {
