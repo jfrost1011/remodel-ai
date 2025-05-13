@@ -8,6 +8,23 @@ app = FastAPI(
     description="AI-powered construction cost estimation for San Diego and Los Angeles",
     version="1.0.0"
 )
+# CORS configuration
+origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://remodel-ai.vercel.app",
+    "https://remodel-ai-*.vercel.app",  # Preview deployments
+    "https://*.vercel.app",
+    settings.frontend_url,
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
+)
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
