@@ -151,7 +151,18 @@ export const api = {
       throw new Error(`PDF export failed: ${error}`);
     }
     
-    return response.json();
+    const result = await response.json();
+    
+    // The backend returns a relative URL, we need to make it absolute
+    const downloadUrl = `${API_BASE_URL}${result.file_url}`;
+    
+    // Fetch the PDF from the backend URL
+    const pdfResponse = await fetch(downloadUrl);
+    if (!pdfResponse.ok) {
+      throw new Error('Failed to download PDF');
+    }
+    
+    return pdfResponse.blob();
   },
 };
 
@@ -203,15 +214,8 @@ export async function getEstimate(
 }
 
 export async function exportEstimatePDF(estimateId: string): Promise<Blob> {
-  const result = await api.exportPDF(estimateId);
-  
-  // Fetch the PDF from the URL returned by the API
-  const pdfResponse = await fetch(result.file_url);
-  if (!pdfResponse.ok) {
-    throw new Error('Failed to download PDF');
-  }
-  
-  return pdfResponse.blob();
+  // Just call the api.exportPDF method which already returns a blob
+  return api.exportPDF(estimateId);
 }
 
 // Export the api object as default

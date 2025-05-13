@@ -3,7 +3,7 @@
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { exportEstimatePDF } from "@/lib/api"
+import { api } from '@/lib/api'
 import { Download, FileText, ChevronDown, X, RefreshCw } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
@@ -51,7 +51,17 @@ export function EstimateReport({
     
     setIsPdfLoading(true)
     try {
-      await exportEstimatePDF(estimateId)
+      const blob = await api.exportPDF(estimateId)
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `estimate_${estimateId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
     } catch (error) {
       console.error("Error downloading PDF:", error)
     } finally {
