@@ -1,53 +1,69 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from api import chat, estimate, export
 from config import settings
-import os
+import logging
+# Add test endpoint
+from services.rag_service import RAGService
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("=== RemodelAI Starting ===")
+    import os
+    print("Available environment variables:")
+    for key, value in os.environ.items():
+        if any(x in key.lower() for x in ['key', 'password', 'secret']):
+            print(f"{key}={'*' * 8}")
+        else:
+            print(f"{key}={value}")
+    print("=== Starting application ===")
+    yield
+    print("=== Shutting down application ===")
 app = FastAPI(
     title="RemodelAI API",
-    description="API for construction cost estimation in California",
-    version="1.0.0"
+    description="AI-powered remodeling cost estimation API",
+    version="1.0.0",
+    lifespan=lifespan
 )
-# Configure CORS - be very permissive for now
-origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://remodel-ai-gi1l.vercel.app",
-    "https://remodel-ai.vercel.app",
-    "https://*.vercel.app",
-    settings.frontend_url,
-]
-# Add wildcard for all vercel deployments
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 # Include routers
-app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
-app.include_router(estimate.router, prefix="/api/v1/estimate", tags=["estimate"])
-app.include_router(export.router, prefix="/api/v1/export", tags=["export"])
+app.include_router(chat.router)
+app.include_router(estimate.router)
+app.include_router(export.router)
 @app.get("/")
 async def root():
-    return {"message": "RemodelAI API", "status": "healthy", "version": "1.0.0"}
+    return {"message": "RemodelAI API is running"}
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
-@app.get("/debug/env")
-async def debug_environment():
-    """Debug endpoint to check environment variables"""
-    return {
-        "railway_environment": os.environ.get("RAILWAY_ENVIRONMENT", "not set"),
-        "port": os.environ.get("PORT", "not set"),
-        "openai_api_key": "set" if os.environ.get("OPENAI_API_KEY") else "not set",
-        "pinecone_api_key": "set" if os.environ.get("PINECONE_API_KEY") else "not set",
-        "pinecone_index": os.environ.get("PINECONE_INDEX", "not set"),
-        "frontend_url": settings.frontend_url,
-        "cors_origins": ["*"],
-    }
+    return {"status": "healthy", "environment": settings.environment}
+# Debug endpoint
+@app.get("/debug/pinecone")
+async def debug_pinecone():
+    try:
+        rag = RAGService()
+        test_query = "What are ADUs?"
+        response = await rag.get_chat_response(test_query, [])
+        return {
+            "status": "success",
+            "vectorstore_initialized": rag.vectorstore is not None,
+            "qa_chain_initialized": rag.qa_chain is not None,
+            "test_response": response
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=settings.port)
+    uvicorn.run(app, host="0.0.0.0", port=int(settings.port))
