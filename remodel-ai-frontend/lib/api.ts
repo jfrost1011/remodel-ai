@@ -1,4 +1,21 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+// Helper function to convert camelCase to snake_case
+function toSnakeCase(str: string): string {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+// Helper function to convert object keys from camelCase to snake_case
+function convertKeysToSnakeCase(obj: any): any {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(convertKeysToSnakeCase);
+  }
+  const converted: any = {};
+  for (const key in obj) {
+    const snakeKey = toSnakeCase(key);
+    converted[snakeKey] = convertKeysToSnakeCase(obj[key]);
+  }
+  return converted;
+}
 export const api = {
   baseURL: API_BASE_URL,
   async chat(message: string, sessionId?: string) {
@@ -20,12 +37,14 @@ export const api = {
     return response.json();
   },
   async createEstimate(projectDetails: any) {
+    // Convert camelCase to snake_case for the API
+    const convertedDetails = convertKeysToSnakeCase(projectDetails);
     const response = await fetch(`${API_BASE_URL}/api/v1/estimate/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ project_details: projectDetails }),
+      body: JSON.stringify({ project_details: convertedDetails }),
     });
     if (!response.ok) {
       const error = await response.text();
