@@ -6,7 +6,7 @@ import { ChatInterface } from "@/components/chat-interface"
 import { ProjectDetailsForm } from "@/components/project-details-form"
 import { AboutModal } from "@/components/about-modal"
 import { EstimateReport } from "@/components/estimate-report"
-import { sendChatMessage, getEstimate } from "@/lib/api"
+import { sendMessage, getEstimate } from "@/lib/api"
 import { Footer } from "@/components/footer"
 import { ApiError } from "@/components/api-error"
 import { useAuth } from "@/components/auth-provider"
@@ -122,7 +122,7 @@ export default function Home() {
       const accessToken = isAuthenticated ? await getAccessToken() : null
 
       // Send message to API
-      const { response, estimateData } = await sendChatMessage(
+      const { response, estimateData } = await sendMessage(
         message,
         (costBreakdown?.total ?? 0) > 0 ? projectDetails : undefined,
         accessToken,
