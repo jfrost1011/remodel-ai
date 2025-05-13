@@ -1,0 +1,310 @@
+[
+  {
+    "query": "What are the costs for deck build - pressure-treated lumber - economy in Los Angeles area?",
+    "ground_truth": "For deck build - pressure-treated lumber - economy in Los Angeles, costs typically range from $4,000 to $8,800. Timeline is usually 1.8-3.6.",
+    "location": "Los Angeles",
+    "project_type": "deck_build_-_pressure-treated_lumber_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I want to do a deck build - redwood - premium in San Diego, what will it cost?",
+    "ground_truth": "For deck build - redwood - premium in San Diego, costs typically range from $12,600 to $28,000. Timeline is usually 2.4-4.8.",
+    "location": "San Diego",
+    "project_type": "deck_build_-_redwood_-_premium",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the average price for deck build - redwood - economy in San Diego?",
+    "ground_truth": "For deck build - redwood - economy in San Diego, costs typically range from $7,200 to $16,000. Timeline is usually 1.8-3.6.",
+    "location": "San Diego",
+    "project_type": "deck_build_-_redwood_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "Can you give me an estimate for roofing project in Los Angeles?",
+    "ground_truth": "For roofing in Los Angeles, costs typically range from $7,467 to $20,800. Timeline is usually 0.9-2.7.",
+    "location": "Los Angeles",
+    "project_type": "roofing",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "Can you give me an estimate for basement remodel - mold removal - economy project in San Diego?",
+    "ground_truth": "For basement remodel - mold removal - economy in San Diego, costs typically range from $1,600 to $5,680. Timeline is usually 0.9-1.8.",
+    "location": "San Diego",
+    "project_type": "basement_remodel_-_mold_removal_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How long will a roofing take in San Diego?",
+    "ground_truth": "For roofing in San Diego, costs typically range from $6,400 to $18,667. Timeline is usually 0.9-2.7.",
+    "location": "San Diego",
+    "project_type": "roofing",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the timeline for a deck build - pressure-treated lumber in San Diego?",
+    "ground_truth": "For deck build - pressure-treated lumber in San Diego, costs typically range from $4,500 to $10,000. Timeline is usually 2-4.",
+    "location": "San Diego",
+    "project_type": "deck_build_-_pressure-treated_lumber",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I want to do a deck build - pressure-treated lumber - premium in Los Angeles, what will it cost?",
+    "ground_truth": "For deck build - pressure-treated lumber - premium in Los Angeles, costs typically range from $7,000 to $15,399. Timeline is usually 2.4-4.8.",
+    "location": "Los Angeles",
+    "project_type": "deck_build_-_pressure-treated_lumber_-_premium",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What are the costs for patio install - stamped concrete in San Diego area?",
+    "ground_truth": "For patio install - stamped concrete in San Diego, costs typically range from $4,000 to $10,000. Timeline is usually 1-2.",
+    "location": "San Diego",
+    "project_type": "patio_install_-_stamped_concrete",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I need a cost estimate for accessory dwelling unit in San Diego",
+    "ground_truth": "For accessory dwelling unit in San Diego, costs typically range from $96,000 to $213,333. Timeline is usually 10.8-21.6.",
+    "location": "San Diego",
+    "project_type": "accessory_dwelling_unit",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How much does a flooring cost in Los Angeles?",
+    "ground_truth": "For flooring in Los Angeles, costs typically range from $1,247 to $4,276. Timeline is usually Not Specified.",
+    "location": "Los Angeles",
+    "project_type": "flooring",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the price range for basement remodel - apartment conversion in San Diego?",
+    "ground_truth": "For basement remodel - apartment conversion in San Diego, costs typically range from $40,000 to $125,000. Timeline is usually 12-24.",
+    "location": "San Diego",
+    "project_type": "basement_remodel_-_apartment_conversion",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How much does a basement remodel - mold removal - premium cost in Los Angeles?",
+    "ground_truth": "For basement remodel - mold removal - premium in Los Angeles, costs typically range from $3,080 to $10,500. Timeline is usually 1.2-2.4.",
+    "location": "Los Angeles",
+    "project_type": "basement_remodel_-_mold_removal_-_premium",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How much does a deck build - pressure-treated lumber - premium cost in Los Angeles?",
+    "ground_truth": "For deck build - pressure-treated lumber - premium in Los Angeles, costs typically range from $7,000 to $15,399. Timeline is usually 2.4-4.8.",
+    "location": "Los Angeles",
+    "project_type": "deck_build_-_pressure-treated_lumber_-_premium",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I need a cost estimate for deck build - redwood in San Diego",
+    "ground_truth": "For deck build - redwood in San Diego, costs typically range from $9,000 to $20,000. Timeline is usually 2-4.",
+    "location": "San Diego",
+    "project_type": "deck_build_-_redwood",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How much does a patio install - concrete pavers cost in Los Angeles?",
+    "ground_truth": "For patio install - concrete pavers in Los Angeles, costs typically range from $3,000 to $8,000. Timeline is usually 1-2.",
+    "location": "Los Angeles",
+    "project_type": "patio_install_-_concrete_pavers",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How much does a room addition cost in San Diego?",
+    "ground_truth": "For room addition in San Diego, costs typically range from $66,667 to $133,333. Timeline is usually 10-20.",
+    "location": "San Diego",
+    "project_type": "room_addition",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the average price for room addition in Los Angeles?",
+    "ground_truth": "For room addition in Los Angeles, costs typically range from $77,333 to $154,666. Timeline is usually 10-20.",
+    "location": "Los Angeles",
+    "project_type": "room_addition",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What are the costs for manufactured stone veneer installation in San Diego area?",
+    "ground_truth": "For manufactured stone veneer installation in San Diego, costs typically range from $11,218 to $11,760. Timeline is usually Not Specified.",
+    "location": "San Diego",
+    "project_type": "manufactured_stone_veneer_installation",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the average price for manufactured stone veneer installation - premium in San Diego?",
+    "ground_truth": "For manufactured stone veneer installation - premium in San Diego, costs typically range from $15,705 to $16,464. Timeline is usually Not Specified.",
+    "location": "San Diego",
+    "project_type": "manufactured_stone_veneer_installation_-_premium",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I need a cost estimate for deck build - composite in Los Angeles",
+    "ground_truth": "For deck build - composite in Los Angeles, costs typically range from $8,000 to $17,000. Timeline is usually 2-4.",
+    "location": "Los Angeles",
+    "project_type": "deck_build_-_composite",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I want to do a basement remodel - permits - economy in San Diego, what will it cost?",
+    "ground_truth": "For basement remodel - permits - economy in San Diego, costs typically range from $400 to $1,600. Timeline is usually Not Specified.",
+    "location": "San Diego",
+    "project_type": "basement_remodel_-_permits_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I need a cost estimate for accessory dwelling unit in Los Angeles",
+    "ground_truth": "For accessory dwelling unit in Los Angeles, costs typically range from $106,667 to $234,667. Timeline is usually 10.8-21.6.",
+    "location": "Los Angeles",
+    "project_type": "accessory_dwelling_unit",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What are the costs for basement remodel - economy in San Diego area?",
+    "ground_truth": "For basement remodel - economy in San Diego, costs typically range from $16,000 to $48,000. Timeline is usually 5.4-9.0.",
+    "location": "San Diego",
+    "project_type": "basement_remodel_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I want to do a patio install - concrete pavers - economy in San Diego, what will it cost?",
+    "ground_truth": "For patio install - concrete pavers - economy in San Diego, costs typically range from $2,000 to $5,600. Timeline is usually 0.9-1.8.",
+    "location": "San Diego",
+    "project_type": "patio_install_-_concrete_pavers_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What are the costs for patio install - concrete pavers - economy in Los Angeles area?",
+    "ground_truth": "For patio install - concrete pavers - economy in Los Angeles, costs typically range from $2,400 to $6,400. Timeline is usually 0.9-1.8.",
+    "location": "Los Angeles",
+    "project_type": "patio_install_-_concrete_pavers_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I need a cost estimate for basement remodel - permits - premium in San Diego",
+    "ground_truth": "For basement remodel - permits - premium in San Diego, costs typically range from $700 to $2,800. Timeline is usually Not Specified.",
+    "location": "San Diego",
+    "project_type": "basement_remodel_-_permits_-_premium",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "I want to do a deck build - redwood in San Diego, what will it cost?",
+    "ground_truth": "For deck build - redwood in San Diego, costs typically range from $9,000 to $20,000. Timeline is usually 2-4.",
+    "location": "San Diego",
+    "project_type": "deck_build_-_redwood",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the price range for entry door replacement (steel) - economy in San Diego?",
+    "ground_truth": "For entry door replacement (steel) - economy in San Diego, costs typically range from $1,792 to $1,921. Timeline is usually Not Specified.",
+    "location": "San Diego",
+    "project_type": "entry_door_replacement_(steel)_-_economy",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "Can you estimate the cost of accessory dwelling unit in Los Angeles?",
+    "ground_truth": "For accessory dwelling unit in Los Angeles, costs typically range from $106,667 to $234,667. Timeline is usually 10.8-21.6.",
+    "location": "Los Angeles",
+    "project_type": "accessory_dwelling_unit",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How long will a basement remodel - general - premium take in Los Angeles?",
+    "ground_truth": "For basement remodel - general - premium in Los Angeles, costs typically range from $18,200 to $51,800. Timeline is usually 7.2-14.4.",
+    "location": "Los Angeles",
+    "project_type": "basement_remodel_-_general_-_premium",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the average price for room addition in Los Angeles?",
+    "ground_truth": "For room addition in Los Angeles, costs typically range from $77,333 to $154,666. Timeline is usually 10-20.",
+    "location": "Los Angeles",
+    "project_type": "room_addition",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "What's the timeline for a patio install - concrete pavers in San Diego?",
+    "ground_truth": "For patio install - concrete pavers in San Diego, costs typically range from $2,500 to $7,000. Timeline is usually 1-2.",
+    "location": "San Diego",
+    "project_type": "patio_install_-_concrete_pavers",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How much does a garage conversion cost in San Diego?",
+    "ground_truth": "For garage conversion in San Diego, costs typically range from $4,622 to $4,857. Timeline is usually Not Specified.",
+    "location": "San Diego",
+    "project_type": "garage_conversion",
+    "query_type": "valid_location"
+  },
+  {
+    "query": "How much does a basement remodel cost in Las Vegas?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Las Vegas yet, but we're expanding soon!",
+    "location": "Las Vegas",
+    "project_type": "basement_remodel",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "What's the timeline for a basement remodel - mold removal - economy in Sacramento?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Sacramento yet, but we're expanding soon!",
+    "location": "Sacramento",
+    "project_type": "basement_remodel_-_mold_removal_-_economy",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "How much does a entry door replacement (steel) - economy cost in San Francisco?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in San Francisco yet, but we're expanding soon!",
+    "location": "San Francisco",
+    "project_type": "entry_door_replacement_(steel)_-_economy",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "Can you estimate the cost of deck build - composite - economy in San Francisco?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in San Francisco yet, but we're expanding soon!",
+    "location": "San Francisco",
+    "project_type": "deck_build_-_composite_-_economy",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "What's the average price for basement remodel - mold removal in Sacramento?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Sacramento yet, but we're expanding soon!",
+    "location": "Sacramento",
+    "project_type": "basement_remodel_-_mold_removal",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "How much does a manufactured stone veneer installation - economy cost in Phoenix?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Phoenix yet, but we're expanding soon!",
+    "location": "Phoenix",
+    "project_type": "manufactured_stone_veneer_installation_-_economy",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "Can you estimate the cost of basement remodel - permits in Seattle?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Seattle yet, but we're expanding soon!",
+    "location": "Seattle",
+    "project_type": "basement_remodel_-_permits",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "I need a cost estimate for garage conversion in Portland",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Portland yet, but we're expanding soon!",
+    "location": "Portland",
+    "project_type": "garage_conversion",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "How much does a entry door replacement (steel) - premium cost in Seattle?",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Seattle yet, but we're expanding soon!",
+    "location": "Seattle",
+    "project_type": "entry_door_replacement_(steel)_-_premium",
+    "query_type": "invalid_location"
+  },
+  {
+    "query": "I need a cost estimate for basement remodel - apartment conversion in Seattle",
+    "ground_truth": "We currently only serve San Diego and Los Angeles. We're not available in Seattle yet, but we're expanding soon!",
+    "location": "Seattle",
+    "project_type": "basement_remodel_-_apartment_conversion",
+    "query_type": "invalid_location"
+  }
+]

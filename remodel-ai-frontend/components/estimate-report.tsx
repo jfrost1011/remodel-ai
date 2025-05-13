@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { exportEstimatePDF } from "@/lib/api"
 import { Download, FileText, ChevronDown, X, RefreshCw } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
@@ -16,6 +17,7 @@ interface CostBreakdown {
 
 // Update the projectDetails interface to include propertyType
 interface EstimateReportProps {
+  estimateId: string | null
   projectDetails: {
     projectType: string
     propertyType: string // Add this line
@@ -37,27 +39,24 @@ export function EstimateReport({
   confidence,
   onClose,
   onNewEstimate,
-}: EstimateReportProps) {
+  estimateId,}: EstimateReportProps) {
   const [isPdfLoading, setIsPdfLoading] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
 
   const handleDownloadPdf = async () => {
+    if (!estimateId) {
+      console.error("No estimate ID available")
+      return
+    }
+    
     setIsPdfLoading(true)
-
-    // In a real implementation, you would use a library like html2pdf.js or jsPDF
-    // or make a server request to generate the PDF
-
-    // Simulate PDF generation delay
-    setTimeout(() => {
+    try {
+      await exportEstimatePDF(estimateId)
+    } catch (error) {
+      console.error("Error downloading PDF:", error)
+    } finally {
       setIsPdfLoading(false)
-      // Create a fake download
-      const link = document.createElement("a")
-      link.href = "#"
-      link.setAttribute("download", `RemodelAI_Estimate_${projectDetails.projectType.replace(/\s+/g, "_")}.pdf`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    }, 2000)
+    }
   }
 
   const squareFootage = projectDetails.squareFootage || "N/A"

@@ -1,20 +1,22 @@
-import { NextResponse } from "next/server"
-
-// This is a mock API health endpoint
+﻿import { NextResponse } from "next/server"
 export async function GET() {
-  // Simulate random API health status for demo purposes
-  // In a real app, this would check actual backend health
-  const random = Math.random()
-
-  // 80% chance of being up, 10% degraded, 10% down
-  if (random < 0.8) {
-    return NextResponse.json({ status: "up", message: "API is operational" })
-  } else if (random < 0.9) {
-    // Simulate a slow response for degraded status
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    return NextResponse.json({ status: "degraded", message: "API is experiencing slowdowns" })
-  } else {
-    // Simulate a server error
-    return NextResponse.json({ status: "down", message: "API is currently unavailable" }, { status: 500 })
+  try {
+    // Get the backend URL from environment variable or default to localhost:8000
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    // Call the actual backend health endpoint
+    const response = await fetch(`${backendUrl}/health`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+    if (!response.ok) {
+      return NextResponse.json({ status: "down", message: "Backend is not responding" }, { status: 500 })
+    }
+    const data = await response.json()
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error("Error checking backend health:", error)
+    return NextResponse.json({ status: "down", message: "Backend is currently unavailable" }, { status: 500 })
   }
 }

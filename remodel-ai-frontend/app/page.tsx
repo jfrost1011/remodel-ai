@@ -31,6 +31,7 @@ interface ProjectDetails {
 
 // Define the CostBreakdown type
 interface CostBreakdown {
+  total: number
   labor: number
   materials: number
   permits: number
@@ -61,14 +62,15 @@ export default function Home() {
     additionalDetails: "",
   })
   const [costBreakdown, setCostBreakdown] = useState<CostBreakdown>({
+    total: 0,
     labor: 0,
     materials: 0,
     permits: 0,
     other: 0,
-    total: 0,
   })
   const [timeline, setTimeline] = useState("")
   const [confidence, setConfidence] = useState(0)
+  const [estimateId, setEstimateId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
 
@@ -76,6 +78,7 @@ export default function Home() {
   const handleNewEstimate = () => {
     setShowEstimateReport(false)
     setCostBreakdown({
+      total: 0,
       labor: 0,
       materials: 0,
       permits: 0,
@@ -123,7 +126,7 @@ export default function Home() {
       // Send message to API
       const { response, estimateData } = await sendChatMessage(
         message,
-        costBreakdown.total > 0 ? projectDetails : undefined,
+        (costBreakdown?.total ?? 0) > 0 ? projectDetails : undefined,
         accessToken,
       )
 
@@ -139,6 +142,7 @@ export default function Home() {
       // If the API returned estimate data, update the state
       if (estimateData) {
         setCostBreakdown(estimateData.costBreakdown)
+      setEstimateId(estimateId)
         setTimeline(estimateData.timeline)
         setConfidence(estimateData.confidence)
       }
@@ -162,10 +166,11 @@ export default function Home() {
       const accessToken = isAuthenticated ? await getAccessToken() : null
 
       // Get estimate from API
-      const { response, estimateData } = await getEstimate(details, accessToken)
+      const { response, estimateData, estimateId } = await getEstimate(details, accessToken)
 
       // Update state with estimate data
       setCostBreakdown(estimateData.costBreakdown)
+      setEstimateId(estimateId)
       setTimeline(estimateData.timeline)
       setConfidence(estimateData.confidence)
 
@@ -230,7 +235,7 @@ export default function Home() {
             onSendMessage={handleSendMessage}
             onProjectDetailsClick={() => setIsProjectDetailsOpen(true)}
             onViewEstimateReport={handleViewEstimateReport}
-            showEstimateButton={costBreakdown.total > 0 && !showEstimateReport}
+            showEstimateButton={(costBreakdown?.total ?? 0) > 0 && !showEstimateReport}
           />
         </div>
 
@@ -242,6 +247,7 @@ export default function Home() {
             projectDetails={projectDetails}
             costBreakdown={costBreakdown}
             timeline={timeline}
+            estimateId={estimateId}
             confidence={confidence}
             onClose={handleCloseEstimateReport}
             onNewEstimate={handleNewEstimate}

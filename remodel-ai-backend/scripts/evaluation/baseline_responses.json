@@ -1,0 +1,242 @@
+[
+  {
+    "question": "What are the costs for deck build - pressure-treated lumber - economy in Los Angeles area?",
+    "answer": "For a deck build using pressure-treated lumber in the Los Angeles area, the estimated costs typically range from $15 to $25 per square foot, depending on the specific design and complexity of the project. \n\nIn terms of timelines, a standard deck build can take approximately 2 to 4 weeks to complete, factoring in design, permitting, and construction time. \n\nFor a more precise estimate, please provide the desired size of the deck or any specific features you are considering.",
+    "ground_truth": "For deck build - pressure-treated lumber - economy in Los Angeles, costs typically range from $4,000 to $8,800. Timeline is usually 1.8-3.6.",
+    "contexts": [
+      "Project type: deck_build_-_pressure-treated_lumber_-_economy, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "I want to do a deck build - redwood - premium in San Diego, what will it cost?",
+    "answer": "For a premium redwood deck build in San Diego, the estimated cost typically ranges from $30 to $50 per square foot, depending on the complexity of the design and any additional features you may want to include, such as railings or built-in seating.\n\nFor a standard size deck of around 300 square feet, you can expect the total cost to be between $9,000 and $15,000. \n\nAs for the timeline, a project of this nature usually takes about 2 to 4 weeks to complete, depending on weather conditions and the availability of materials and labor.\n\nIf you have a specific size or design in mind, I can provide a more tailored estimate.",
+    "ground_truth": "For deck build - redwood - premium in San Diego, costs typically range from $12,600 to $28,000. Timeline is usually 2.4-4.8.",
+    "contexts": [
+      "Project type: deck_build_-_redwood_-_premium, Location: San Diego"
+    ]
+  },
+  {
+    "question": "What's the average price for deck build - redwood - economy in San Diego?",
+    "answer": "The average price for building an economy redwood deck in San Diego is approximately $15,000. The typical timeline for such a project is around 2 to 3 weeks, depending on the size and complexity of the deck design.",
+    "ground_truth": "For deck build - redwood - economy in San Diego, costs typically range from $7,200 to $16,000. Timeline is usually 1.8-3.6.",
+    "contexts": [
+      "Project type: deck_build_-_redwood_-_economy, Location: San Diego"
+    ]
+  },
+  {
+    "question": "Can you give me an estimate for roofing project in Los Angeles?",
+    "answer": "To provide an estimate for a roofing project in Los Angeles, the typical costs and timelines based on the database are as follows:\n\n**Cost Estimates:**\n- The average cost for a roofing project in Los Angeles ranges from **$5,000 to $15,000** depending on the size of the roof, materials used, and complexity of the installation.\n- For a standard single-family home (about 1,500 to 2,500 square feet), you can expect costs around **$8,000 to $12,000** for asphalt shingles, while premium materials like tile or metal can push costs up to **$15,000 or more**.\n\n**Timelines:**\n- The typical timeline for a roofing project in Los Angeles is about **1 to 2 weeks**. This includes time for removal of the old roof, installation of the new roofing material, and any necessary inspections.\n- Larger or more complex projects may take longer, potentially extending to **3 weeks or more**.\n\nIf you have specific details about the size of the roof or the type of materials you are considering, I can provide a more tailored estimate.",
+    "ground_truth": "For roofing in Los Angeles, costs typically range from $7,467 to $20,800. Timeline is usually 0.9-2.7.",
+    "contexts": [
+      "Project type: roofing, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "Can you give me an estimate for basement remodel - mold removal - economy project in San Diego?",
+    "answer": "For a basement remodel focusing on mold removal as an economy project in San Diego, the estimated cost typically ranges from $10,000 to $20,000. This estimate includes mold remediation, basic finishing, and necessary repairs to ensure the space is safe and functional.\n\nThe timeline for such a project usually spans from 4 to 8 weeks, depending on the extent of the mold issue and the complexity of the remodel.\n\nPlease let me know if you need more specific details or additional information!",
+    "ground_truth": "For basement remodel - mold removal - economy in San Diego, costs typically range from $1,600 to $5,680. Timeline is usually 0.9-1.8.",
+    "contexts": [
+      "Project type: basement_remodel_-_mold_removal_-_economy, Location: San Diego"
+    ]
+  },
+  {
+    "question": "How long will a roofing take in San Diego?",
+    "answer": "In San Diego, the timeline for a roofing project typically ranges from 1 to 3 weeks, depending on the size and complexity of the roof. \n\nAs for cost estimates, a standard roofing project can range from $5,000 to $15,000. For example, a small residential roof might cost around $7,500, while a larger or more complex roof could go up to $12,000 or more.\n\nIf you have a specific type of roofing material or project size in mind, I can provide more tailored estimates.",
+    "ground_truth": "For roofing in San Diego, costs typically range from $6,400 to $18,667. Timeline is usually 0.9-2.7.",
+    "contexts": [
+      "Project type: roofing, Location: San Diego"
+    ]
+  },
+  {
+    "question": "What's the timeline for a deck build - pressure-treated lumber in San Diego?",
+    "answer": "For a deck build using pressure-treated lumber in San Diego, the typical timeline is approximately 2 to 4 weeks, depending on the size and complexity of the project, as well as weather conditions and permitting processes.\n\nIn terms of cost, you can expect to pay around $15 to $30 per square foot for materials and labor. For a standard 300 square foot deck, this would translate to a total cost estimate of approximately $4,500 to $9,000.\n\nKeep in mind that these estimates can vary based on specific design choices, site conditions, and contractor rates.",
+    "ground_truth": "For deck build - pressure-treated lumber in San Diego, costs typically range from $4,500 to $10,000. Timeline is usually 2-4.",
+    "contexts": [
+      "Project type: deck_build_-_pressure-treated_lumber, Location: San Diego"
+    ]
+  },
+  {
+    "question": "I want to do a deck build - pressure-treated lumber - premium in Los Angeles, what will it cost?",
+    "answer": "For a deck build using premium pressure-treated lumber in Los Angeles, the estimated cost typically ranges from $25 to $35 per square foot. This includes materials and labor. \n\nFor a standard deck size of about 300 square feet, you can expect the total cost to be between $7,500 and $10,500. \n\nAs for the timeline, a project of this nature usually takes about 2 to 4 weeks to complete, depending on the complexity of the design and any permitting requirements.\n\nIf you have a specific size or design in mind, I can provide a more tailored estimate.",
+    "ground_truth": "For deck build - pressure-treated lumber - premium in Los Angeles, costs typically range from $7,000 to $15,399. Timeline is usually 2.4-4.8.",
+    "contexts": [
+      "Project type: deck_build_-_pressure-treated_lumber_-_premium, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "What are the costs for patio install - stamped concrete in San Diego area?",
+    "answer": "In the San Diego area, the costs for installing a stamped concrete patio typically range from $12 to $20 per square foot. For a standard patio size of about 300 square feet, you can expect the total cost to be between $3,600 and $6,000. \n\nAs for the timeline, the installation of a stamped concrete patio usually takes about 1 to 3 days, depending on the complexity of the design and weather conditions. This includes preparation, pouring, stamping, and curing time.\n\nIf you have a specific size or design in mind, I can provide a more tailored estimate!",
+    "ground_truth": "For patio install - stamped concrete in San Diego, costs typically range from $4,000 to $10,000. Timeline is usually 1-2.",
+    "contexts": [
+      "Project type: patio_install_-_stamped_concrete, Location: San Diego"
+    ]
+  },
+  {
+    "question": "I need a cost estimate for accessory dwelling unit in San Diego",
+    "answer": "To provide a cost estimate for an accessory dwelling unit (ADU) in San Diego, the typical costs based on recent data from our database range from $150,000 to $300,000. This estimate includes construction, permits, and utility connections. \n\nThe timeline for completing an ADU project in San Diego generally spans from 4 to 8 months, depending on factors such as design complexity, permitting processes, and contractor availability.\n\nIf you have specific design features or requirements in mind, please let me know, and I can refine the estimate further!",
+    "ground_truth": "For accessory dwelling unit in San Diego, costs typically range from $96,000 to $213,333. Timeline is usually 10.8-21.6.",
+    "contexts": [
+      "Project type: accessory_dwelling_unit, Location: San Diego"
+    ]
+  },
+  {
+    "question": "How much does a flooring cost in Los Angeles?",
+    "answer": "The cost of flooring in Los Angeles can vary significantly based on the type of flooring material chosen. Here are some specific cost estimates based on the database:\n\n1. **Laminate Flooring**: Approximately $2 to $5 per square foot. Installation typically takes about 1 to 2 days for an average-sized room.\n\n2. **Hardwood Flooring**: Costs range from $5 to $10 per square foot. Installation can take 2 to 4 days, depending on the size of the area and the complexity of the installation.\n\n3. **Tile Flooring**: Generally costs between $3 to $7 per square foot. Installation may take about 2 to 3 days, depending on the layout and size of the space.\n\n4. **Vinyl Flooring**: Prices range from $1.50 to $4 per square foot. Installation usually takes about 1 to 2 days.\n\n5. **Carpet**: Costs can vary from $2 to $6 per square foot, with installation taking about 1 to 2 days.\n\nThese estimates include both material and installation costs, but actual prices may vary based on specific project details and contractor rates.",
+    "ground_truth": "For flooring in Los Angeles, costs typically range from $1,247 to $4,276. Timeline is usually Not Specified.",
+    "contexts": [
+      "Project type: flooring, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "What's the price range for basement remodel - apartment conversion in San Diego?",
+    "answer": "The price range for a basement remodel for apartment conversion in San Diego typically falls between $50,000 to $150,000. The timeline for such a project usually spans from 3 to 6 months, depending on the complexity of the remodel and any necessary permits or inspections.",
+    "ground_truth": "For basement remodel - apartment conversion in San Diego, costs typically range from $40,000 to $125,000. Timeline is usually 12-24.",
+    "contexts": [
+      "Project type: basement_remodel_-_apartment_conversion, Location: San Diego"
+    ]
+  },
+  {
+    "question": "How much does a basement remodel - mold removal - premium cost in Los Angeles?",
+    "answer": "The cost for a basement remodel that includes mold removal at a premium level in Los Angeles typically ranges from $30,000 to $50,000. The timeline for such a project usually spans between 4 to 8 weeks, depending on the extent of the mold issue and the complexity of the remodel.",
+    "ground_truth": "For basement remodel - mold removal - premium in Los Angeles, costs typically range from $3,080 to $10,500. Timeline is usually 1.2-2.4.",
+    "contexts": [
+      "Project type: basement_remodel_-_mold_removal_-_premium, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "How much does a deck build - pressure-treated lumber - premium cost in Los Angeles?",
+    "answer": "The cost to build a deck using pressure-treated lumber in Los Angeles typically ranges from $15 to $30 per square foot, depending on the complexity of the design and additional features. For a standard deck size of around 300 square feet, you can expect the total cost to be between $4,500 and $9,000.\n\nIn terms of timelines, a deck build usually takes about 2 to 4 weeks to complete, depending on the weather conditions and the availability of materials and labor.\n\nIf you have a specific size or design in mind, I can provide a more tailored estimate!",
+    "ground_truth": "For deck build - pressure-treated lumber - premium in Los Angeles, costs typically range from $7,000 to $15,399. Timeline is usually 2.4-4.8.",
+    "contexts": [
+      "Project type: deck_build_-_pressure-treated_lumber_-_premium, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "I need a cost estimate for deck build - redwood in San Diego",
+    "answer": "For a redwood deck build in San Diego, the cost estimates typically range from $30 to $50 per square foot, depending on the complexity of the design and the specific materials used. \n\nFor a standard deck size of about 300 square feet, you can expect the total cost to be between $9,000 and $15,000. \n\nAs for the timeline, a project of this nature usually takes about 2 to 4 weeks to complete, depending on weather conditions and the availability of materials and labor.\n\nIf you have a specific size or design in mind, I can provide a more tailored estimate.",
+    "ground_truth": "For deck build - redwood in San Diego, costs typically range from $9,000 to $20,000. Timeline is usually 2-4.",
+    "contexts": [
+      "Project type: deck_build_-_redwood, Location: San Diego"
+    ]
+  },
+  {
+    "question": "How much does a patio install - concrete pavers cost in Los Angeles?",
+    "answer": "The cost of installing a patio with concrete pavers in Los Angeles typically ranges from $15 to $25 per square foot. For a standard patio size of about 300 square feet, you can expect the total cost to be between $4,500 and $7,500. \n\nAs for the timeline, the installation of a concrete paver patio usually takes about 3 to 5 days, depending on the complexity of the design and site conditions. This includes preparation, laying the pavers, and finishing touches.\n\nIf you have a specific size or design in mind, I can provide a more tailored estimate.",
+    "ground_truth": "For patio install - concrete pavers in Los Angeles, costs typically range from $3,000 to $8,000. Timeline is usually 1-2.",
+    "contexts": [
+      "Project type: patio_install_-_concrete_pavers, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "How much does a room addition cost in San Diego?",
+    "answer": "The cost of a room addition in San Diego typically ranges from $150 to $300 per square foot, depending on the complexity of the project and the materials used. For a standard room addition of about 200 square feet, you can expect the total cost to be between $30,000 and $60,000.\n\nIn terms of timelines, a room addition project usually takes about 3 to 6 months to complete, depending on factors such as permitting, design, and construction schedules. \n\nIf you have a specific size or type of room addition in mind, I can provide more tailored estimates.",
+    "ground_truth": "For room addition in San Diego, costs typically range from $66,667 to $133,333. Timeline is usually 10-20.",
+    "contexts": [
+      "Project type: room_addition, Location: San Diego"
+    ]
+  },
+  {
+    "question": "What's the average price for room addition in Los Angeles?",
+    "answer": "The average cost for a room addition in Los Angeles typically ranges from $200 to $400 per square foot, depending on the complexity of the project and the materials used. For a standard room addition of about 200 square feet, you can expect the total cost to be between $40,000 and $80,000.\n\nIn terms of timelines, a room addition project usually takes about 3 to 6 months to complete, depending on factors such as permitting, design, and construction schedules.\n\nIf you have a specific size or type of room addition in mind, I can provide more tailored estimates.",
+    "ground_truth": "For room addition in Los Angeles, costs typically range from $77,333 to $154,666. Timeline is usually 10-20.",
+    "contexts": [
+      "Project type: room_addition, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "What are the costs for manufactured stone veneer installation in San Diego area?",
+    "answer": "The cost for manufactured stone veneer installation in the San Diego area typically ranges from $10 to $15 per square foot. The total cost can vary based on factors such as the complexity of the installation, the specific type of stone veneer chosen, and any additional labor or preparation required.\n\nIn terms of timelines, the installation of manufactured stone veneer generally takes about 1 to 2 weeks, depending on the size of the project and the weather conditions.\n\nIf you have a specific project size in mind, I can provide a more tailored estimate.",
+    "ground_truth": "For manufactured stone veneer installation in San Diego, costs typically range from $11,218 to $11,760. Timeline is usually Not Specified.",
+    "contexts": [
+      "Project type: manufactured_stone_veneer_installation, Location: San Diego"
+    ]
+  },
+  {
+    "question": "What's the average price for manufactured stone veneer installation - premium in San Diego?",
+    "answer": "The average price for premium manufactured stone veneer installation in San Diego is approximately $15 to $25 per square foot. The typical timeline for installation ranges from 1 to 3 weeks, depending on the size of the project and the complexity of the design. For a standard residential project, you can expect to pay around $5,000 to $15,000 in total, with larger or more intricate installations potentially costing more.",
+    "ground_truth": "For manufactured stone veneer installation - premium in San Diego, costs typically range from $15,705 to $16,464. Timeline is usually Not Specified.",
+    "contexts": [
+      "Project type: manufactured_stone_veneer_installation_-_premium, Location: San Diego"
+    ]
+  },
+  {
+    "question": "I need a cost estimate for deck build - composite in Los Angeles",
+    "answer": "For a composite deck build in Los Angeles, the cost estimates typically range from $15 to $30 per square foot, depending on the complexity of the design and the materials used. \n\nFor a standard 300 square foot composite deck, you can expect the total cost to be between $4,500 and $9,000. \n\nAs for the timeline, a project of this nature usually takes about 2 to 4 weeks to complete, depending on weather conditions and the availability of materials and labor.\n\nIf you have specific dimensions or design features in mind, I can provide a more tailored estimate.",
+    "ground_truth": "For deck build - composite in Los Angeles, costs typically range from $8,000 to $17,000. Timeline is usually 2-4.",
+    "contexts": [
+      "Project type: deck_build_-_composite, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "I want to do a basement remodel - permits - economy in San Diego, what will it cost?",
+    "answer": "For a basement remodel in San Diego, the costs can vary based on several factors, including the size of the basement, the extent of the remodel, and specific finishes. Based on the data from our database, here are some estimates:\n\n### Cost Estimates:\n- **Basic Remodel**: $20,000 - $35,000\n  - This typically includes new flooring, basic lighting, and paint.\n  \n- **Mid-Range Remodel**: $35,000 - $60,000\n  - This may include upgraded flooring, custom cabinetry, and improved lighting fixtures.\n  \n- **High-End Remodel**: $60,000 - $100,000+\n  - This could involve high-quality finishes, a bathroom addition, and extensive structural changes.\n\n### Permit Costs:\n- **Permits**: $1,500 - $3,000\n  - Depending on the scope of work, you may need various permits, which can add to the overall cost.\n\n### Timeline Estimates:\n- **Basic Remodel**: 4 - 6 weeks\n- **Mid-Range Remodel**: 6 - 10 weeks\n- **High-End Remodel**: 10 - 16 weeks\n\n### Summary:\nFor a basement remodel in San Diego, you can expect to spend anywhere from $20,000 to over $100,000, depending on the level of finish and complexity of the project. Additionally, factor in permit costs and a timeline that can range from a month to several months based on the scope of work. Always consult with a local contractor for a more tailored estimate.",
+    "ground_truth": "For basement remodel - permits - economy in San Diego, costs typically range from $400 to $1,600. Timeline is usually Not Specified.",
+    "contexts": [
+      "Project type: basement_remodel_-_permits_-_economy, Location: San Diego"
+    ]
+  },
+  {
+    "question": "I need a cost estimate for accessory dwelling unit in Los Angeles",
+    "answer": "To provide a cost estimate for an accessory dwelling unit (ADU) in Los Angeles, the average cost typically ranges from $200 to $400 per square foot, depending on the complexity of the design, materials used, and any additional features. \n\nFor a standard ADU of about 600 square feet, the estimated cost would be:\n\n- **Low-end estimate**: 600 sq ft x $200/sq ft = $120,000\n- **High-end estimate**: 600 sq ft x $400/sq ft = $240,000\n\nIn terms of timelines, the construction of an ADU in Los Angeles generally takes between 4 to 6 months, assuming there are no significant delays due to permitting or other issues.\n\nPlease let me know if you need more specific details or additional information!",
+    "ground_truth": "For accessory dwelling unit in Los Angeles, costs typically range from $106,667 to $234,667. Timeline is usually 10.8-21.6.",
+    "contexts": [
+      "Project type: accessory_dwelling_unit, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "What are the costs for basement remodel - economy in San Diego area?",
+    "answer": "For an economy basement remodel in the San Diego area, the cost typically ranges from $20,000 to $35,000. The timeline for such a project usually spans between 6 to 10 weeks, depending on the specific scope of work and any potential permitting requirements. \n\nThese estimates include basic finishes, such as drywall, flooring, and lighting, but may vary based on the specific features and materials chosen. If you have any specific requirements or features in mind, please let me know for a more tailored estimate!",
+    "ground_truth": "For basement remodel - economy in San Diego, costs typically range from $16,000 to $48,000. Timeline is usually 5.4-9.0.",
+    "contexts": [
+      "Project type: basement_remodel_-_economy, Location: San Diego"
+    ]
+  },
+  {
+    "question": "I want to do a patio install - concrete pavers - economy in San Diego, what will it cost?",
+    "answer": "For an economy patio installation using concrete pavers in San Diego, the estimated cost typically ranges from $10 to $15 per square foot. This includes materials and labor. \n\nFor a standard patio size of about 300 square feet, you can expect the total cost to be between $3,000 and $4,500. \n\nIn terms of timeline, the installation process usually takes about 3 to 5 days, depending on the complexity of the design and site conditions.\n\nIf you have a specific size in mind or additional features you'd like to include, please let me know for a more tailored estimate!",
+    "ground_truth": "For patio install - concrete pavers - economy in San Diego, costs typically range from $2,000 to $5,600. Timeline is usually 0.9-1.8.",
+    "contexts": [
+      "Project type: patio_install_-_concrete_pavers_-_economy, Location: San Diego"
+    ]
+  },
+  {
+    "question": "What are the costs for patio install - concrete pavers - economy in Los Angeles area?",
+    "answer": "For the installation of concrete pavers in an economy range in the Los Angeles area, the cost estimates typically range from $10 to $15 per square foot. This includes materials and labor. \n\nAs for the timeline, the installation of a concrete paver patio generally takes about 1 to 2 weeks, depending on the size of the project and weather conditions.\n\nIf you have a specific area size in mind, I can provide a more detailed cost estimate based on that.",
+    "ground_truth": "For patio install - concrete pavers - economy in Los Angeles, costs typically range from $2,400 to $6,400. Timeline is usually 0.9-1.8.",
+    "contexts": [
+      "Project type: patio_install_-_concrete_pavers_-_economy, Location: Los Angeles"
+    ]
+  },
+  {
+    "question": "I need a cost estimate for basement remodel - permits - premium in San Diego",
+    "answer": "For a basement remodel in San Diego, including permits and premium finishes, the cost estimate typically ranges from $50,000 to $100,000. The timeline for such a project usually spans from 3 to 6 months, depending on the complexity of the remodel and the permitting process.\n\nHere\u2019s a breakdown of the costs:\n\n- **Construction Costs**: $40,000 to $80,000\n- **Permits**: $5,000 to $10,000\n- **Premium Finishes**: $5,000 to $10,000\n\nKeep in mind that these estimates can vary based on specific design choices, contractor rates, and any unforeseen issues that may arise during construction. It's advisable to consult with local contractors for a more tailored estimate.",
+    "ground_truth": "For basement remodel - permits - premium in San Diego, costs typically range from $700 to $2,800. Timeline is usually Not Specified.",
+    "contexts": [
+      "Project type: basement_remodel_-_permits_-_premium, Location: San Diego"
+    ]
+  },
+  {
+    "question": "I want to do a deck build - redwood in San Diego, what will it cost?",
+    "answer": "The cost of building a redwood deck in San Diego typically ranges from $15 to $30 per square foot, depending on the complexity of the design and the quality of materials used. For a standard deck size of around 300 square feet, you can expect the total cost to be between $4,500 and $9,000.\n\nIn terms of timeline, a redwood deck build usually takes about 2 to 4 weeks to complete, depending on factors such as weather conditions, permitting processes, and contractor availability.\n\nIf you have a specific size or design in mind, I can provide a more tailored estimate!",
+    "ground_truth": "For deck build - redwood in San Diego, costs typically range from $9,000 to $20,000. Timeline is usually 2-4.",
+    "contexts": [
+      "Project type: deck_build_-_redwood, Location: San Diego"
+    ]
+  },
+  {
+    "question": "What's the price range for entry door replacement (steel) - economy in San Diego?",
+    "answer": "The price range for economy steel entry door replacement in San Diego typically falls between $800 and $1,500. The timeline for this type of project usually spans from 1 to 3 days, depending on the specifics of the installation and any additional work that may be required.",
+    "ground_truth": "For entry door replacement (steel) - economy in San Diego, costs typically range from $1,792 to $1,921. Timeline is usually Not Specified.",
+    "contexts": [
+      "Project type: entry_door_replacement_(steel)_-_economy, Location: San Diego"
+    ]
+  },
+  {
+    "question": "Can you estimate the cost of accessory dwelling unit in Los Angeles?",
+    "answer": "The cost of constructing an accessory dwelling unit (ADU) in Los Angeles typically ranges from $100,000 to $300,000, depending on various factors such as size, design, materials, and site conditions. Based on data from recent projects in the area, here are some specific estimates:\n\n1. **Small ADU (400-600 sq ft)**: \n   - **Cost**: Approximately $150,000 - $200,000\n   - **Timeline**: 4-6 months for completion\n\n2. **Medium ADU (600-800 sq ft)**:\n   - **Cost**: Approximately $200,000 - $250,000\n   - **Timeline**: 6-8 months for completion\n\n3. **Large ADU (800-1,200 sq ft)**:\n   - **Cost**: Approximately $250,000 - $300,000\n   - **Timeline**: 8-12 months for completion\n\nThese estimates include construction costs but may not cover additional expenses such as permits, utility connections, and landscaping. It's advisable to consult with a local contractor for a more tailored estimate based on specific project requirements.",
+    "ground_truth": "For accessory dwelling unit in Los Angeles, costs typically range from $106,667 to $234,667. Timeline is usually 10.8-21.6.",
+    "contexts": [
+      "Project type: accessory_dwelling_unit, Location: Los Angeles"
+    ]
+  }
+]

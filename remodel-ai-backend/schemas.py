@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from enum import Enum
@@ -30,12 +30,14 @@ class ProjectDetails(BaseModel):
     state: str
     square_footage: float = Field(gt=0, le=10000)
     additional_details: Optional[str] = None
-    @validator('state')
+    @field_validator('state')
+    @classmethod
     def validate_state(cls, v):
         if v.upper() != "CA":
             raise ValueError('Currently only serving California')
         return v.upper()
-    @validator('city')
+    @field_validator('city')
+    @classmethod
     def validate_city(cls, v):
         allowed_cities = ["San Diego", "Los Angeles", "LA", "SD"]
         city_upper = v.upper()

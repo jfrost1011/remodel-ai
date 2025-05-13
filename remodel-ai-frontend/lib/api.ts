@@ -1,14 +1,6 @@
 // This file contains utility functions for API communication
-
 import { toast } from "@/components/ui/use-toast"
-
-/**
- * Send a message to the chat API
- * @param message The user's message
- * @param projectDetails Optional project details to include with the message
- * @param accessToken Optional access token for authentication
- * @returns The AI response
- */
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 export async function sendChatMessage(
   message: string,
   projectDetails?: any,
@@ -31,23 +23,18 @@ export async function sendChatMessage(
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     }
-
-    // Add authorization header if access token is provided
     if (accessToken) {
       headers["Authorization"] = `Bearer ${accessToken}`
     }
-
-    const response = await fetch("/api/chat", {
+    const response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
       method: "POST",
       headers,
       body: JSON.stringify({
-        message,
-        projectDetails,
+        content: message,
+        role: "user",
       }),
     })
-
     if (!response.ok) {
-      // Handle different error status codes
       if (response.status === 401 || response.status === 403) {
         toast({
           title: "Authentication Error",
@@ -71,25 +58,22 @@ export async function sendChatMessage(
         throw new Error(`API error: ${response.status}`)
       }
     }
-
-    return await response.json()
+    const data = await response.json()
+    return {
+      response: data.message,
+      estimateData: data.metadata
+    }
   } catch (error) {
     console.error("Error sending chat message:", error)
     throw error
   }
 }
-
-/**
- * Send project details to get an estimate
- * @param projectDetails The project details
- * @param accessToken Optional access token for authentication
- * @returns The estimate data
- */
 export async function getEstimate(
   projectDetails: any,
   accessToken?: string | null,
 ): Promise<{
   response: string
+  estimateId: string
   estimateData: {
     costBreakdown: {
       labor: number
@@ -106,24 +90,29 @@ export async function getEstimate(
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     }
-
-    // Add authorization header if access token is provided
     if (accessToken) {
       headers["Authorization"] = `Bearer ${accessToken}`
     }
-
-    const response = await fetch("/api/chat", {
+    // Transform frontend field names to backend format
+    const backendDetails = {
+      project_type: projectDetails.projectType.toLowerCase().replace(/\s+/g, '_'),
+      property_type: projectDetails.propertyType === "SFR" ? "single_family" : 
+                    projectDetails.propertyType === "2-4 Units" ? "multi_family" : 
+                    projectDetails.propertyType === "Condo" ? "condo" : 
+                    projectDetails.propertyType.toLowerCase(),
+      city: projectDetails.city,
+      state: projectDetails.state,
+      square_footage: projectDetails.squareFootage ? parseFloat(projectDetails.squareFootage) : 200,
+      additional_details: projectDetails.additionalDetails || ""
+    }
+    const response = await fetch(`${API_BASE_URL}/api/v1/estimate`, {
       method: "POST",
       headers,
       body: JSON.stringify({
-        message: "Generate estimate",
-        projectDetails,
-        requestType: "estimate",
+        project_details: backendDetails,
       }),
     })
-
     if (!response.ok) {
-      // Handle different error status codes
       if (response.status === 401 || response.status === 403) {
         toast({
           title: "Authentication Error",
@@ -147,10 +136,71 @@ export async function getEstimate(
         throw new Error(`API error: ${response.status}`)
       }
     }
-
-    return await response.json()
+    const data = await response.json()
+    return {
+      response: "Estimate generated successfully",
+      estimateId: data.estimate_id, // Now returning the estimate_id
+      estimateData: {
+        costBreakdown: {
+          labor: data.cost_breakdown.labor,
+          materials: data.cost_breakdown.materials,
+          permits: data.cost_breakdown.permits,
+          other: data.cost_breakdown.other,
+          total: data.cost_breakdown.total
+        },
+        timeline: `${data.timeline.total_days} days`,
+        confidence: data.confidence_score
+      }
+    }
   } catch (error) {
     console.error("Error getting estimate:", error)
+    throw error
+  }
+}
+export async function exportEstimatePDF(
+  estimateId: string,
+  accessToken?: string | null
+): Promise<string> {
+  try {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    }
+    if (accessToken) {
+      headers["Authorization"] = `Bearer ${accessToken}`
+    }
+    const response = await fetch(`${API_BASE_URL}/api/v1/export`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        estimate_id: estimateId,
+        format: "pdf",
+        include_breakdown: true,
+        include_similar_projects: true
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(`Export error: ${response.status}`)
+    }
+    const data = await response.json()
+    // Download the PDF
+    const downloadUrl = `${API_BASE_URL}${data.file_url}`
+    const downloadResponse = await fetch(downloadUrl)
+    if (!downloadResponse.ok) {
+      throw new Error(`Download error: ${downloadResponse.status}`)
+    }
+    // Create blob and download
+    const blob = await downloadResponse.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.setAttribute("download", data.download_name)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    return data.download_name
+  } catch (error) {
+    console.error("Error exporting PDF:", error)
     throw error
   }
 }
