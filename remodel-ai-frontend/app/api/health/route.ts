@@ -4,7 +4,7 @@ export async function GET() {
     // Get the backend URL from environment variable or default to localhost:8000
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
     // Call the actual backend health endpoint
-    const response = await fetch(`${backendUrl}/health`, {
+    const response = await fetch(`${backendUrl}/api/v1/health`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
