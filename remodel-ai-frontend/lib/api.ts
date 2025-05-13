@@ -1,10 +1,8 @@
 ﻿const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-
 // Helper function to convert camelCase to snake_case
 function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 }
-
 // Map frontend values to backend enum values
 const PROJECT_TYPE_MAP: Record<string, string> = {
   'Kitchen Remodel': 'kitchen_remodel',
@@ -12,13 +10,13 @@ const PROJECT_TYPE_MAP: Record<string, string> = {
   'Room Addition': 'room_addition',
   'Whole House Remodel': 'whole_house_remodel',
   'Accessory Dwelling Unit': 'accessory_dwelling_unit',
+  'ADU': 'accessory_dwelling_unit',
   'Landscaping': 'landscaping',
   'Pool Installation': 'pool_installation',
   'Garage Conversion': 'garage_conversion',
   'Roofing': 'roofing',
   'Flooring': 'flooring'
 };
-
 // Default square footage based on project type
 const DEFAULT_SQUARE_FOOTAGE: Record<string, number> = {
   'kitchen_remodel': 150,
@@ -32,21 +30,25 @@ const DEFAULT_SQUARE_FOOTAGE: Record<string, number> = {
   'roofing': 1800,
   'flooring': 1000
 };
-
 const PROPERTY_TYPE_MAP: Record<string, string> = {
   'SFR': 'single_family',
   'Single Family Residence': 'single_family',
   'Single Family': 'single_family',
   'Condo': 'condo',
   'Townhouse': 'townhouse',
-  'Multi Family': 'multi_family'
+  'Multi Family': 'multi_family',
+  'Multi-Family': 'multi_family'
 };
-
 // Helper function to convert object keys from camelCase to snake_case
 function convertKeysToSnakeCase(obj: any): any {
-  if (obj === null || typeof obj !== 'object') return obj;
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
   if (Array.isArray(obj)) {
     return obj.map(convertKeysToSnakeCase);
+  }
+  if (typeof obj !== 'object') {
+    return obj;
   }
   const converted: any = {};
   for (const key in obj) {
@@ -55,21 +57,17 @@ function convertKeysToSnakeCase(obj: any): any {
   }
   return converted;
 }
-
 // Transform project details to match backend expectations
 function transformProjectDetails(details: any): any {
   const transformed = convertKeysToSnakeCase(details);
-  
-  // Map project type
-  if (transformed.project_type) {
+  // Map project type - use the original value from the form, not the snake_case version
+  if (details.projectType) {
     transformed.project_type = PROJECT_TYPE_MAP[details.projectType] || details.projectType.toLowerCase().replace(/ /g, '_');
   }
-  
-  // Map property type
-  if (transformed.property_type) {
+  // Map property type - use the original value from the form
+  if (details.propertyType) {
     transformed.property_type = PROPERTY_TYPE_MAP[details.propertyType] || details.propertyType.toLowerCase().replace(/ /g, '_');
   }
-  
   // Ensure square_footage is a valid number with smart defaults
   if (transformed.square_footage !== undefined) {
     const squareFootage = parseFloat(transformed.square_footage) || 0;
@@ -79,19 +77,25 @@ function transformProjectDetails(details: any): any {
     } else {
       transformed.square_footage = squareFootage;
     }
+  } else {
+    // If no square footage provided, use default based on project type
+    transformed.square_footage = DEFAULT_SQUARE_FOOTAGE[transformed.project_type] || 200;
   }
-  
+  // Ensure state is uppercase
+  if (transformed.state) {
+    transformed.state = transformed.state.toUpperCase();
+  }
   // Remove empty optional fields
   if (!transformed.additional_details) {
     delete transformed.additional_details;
   }
-  
+  if (!transformed.address) {
+    delete transformed.address;
+  }
   return transformed;
 }
-
-export const api = {
-  baseURL: API_BASE_URL,
-  
+// The main API object
+const api = {
   async chat(message: string, sessionId?: string) {
     const response = await fetch(`/api/chat`, {
       method: 'POST',
@@ -104,20 +108,16 @@ export const api = {
         session_id: sessionId
       }),
     });
-    
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Chat request failed: ${error}`);
     }
-    
     return response.json();
   },
-  
   async createEstimate(projectDetails: any) {
     // Transform the details to match backend expectations
     const transformedDetails = transformProjectDetails(projectDetails);
     console.log('Sending to backend:', transformedDetails); // Debug log
-    
     const response = await fetch(`/api/estimate`, {
       method: 'POST',
       headers: {
@@ -125,15 +125,12 @@ export const api = {
       },
       body: JSON.stringify({ project_details: transformedDetails }),
     });
-    
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Estimate creation failed: ${error}`);
     }
-    
     return response.json();
   },
-  
   async exportPDF(estimateId: string) {
     const response = await fetch(`/api/export`, {
       method: 'POST',
@@ -145,29 +142,35 @@ export const api = {
         format: 'pdf'
       }),
     });
-    
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`PDF export failed: ${error}`);
     }
-    
     const result = await response.json();
-    
-    // The backend returns a relative URL, we need to make it absolute
-    const downloadUrl = `${API_BASE_URL}${result.file_url}`;
-    
-    // Fetch the PDF from the backend URL
-    const pdfResponse = await fetch(downloadUrl);
-    if (!pdfResponse.ok) {
-      throw new Error('Failed to download PDF');
+    // Check if we have a URL or base64 data
+    if (result.file_url) {
+      // Download from URL
+      const downloadResponse = await fetch(result.file_url);
+      if (!downloadResponse.ok) {
+        throw new Error('Failed to download PDF');
+      }
+      return downloadResponse.blob();
+    } else if (result.content) {
+      // Convert base64 to blob
+      const base64Data = result.content.split(',')[1] || result.content;
+      const binaryData = atob(base64Data);
+      const bytes = new Uint8Array(binaryData.length);
+      for (let i = 0; i < binaryData.length; i++) {
+        bytes[i] = binaryData.charCodeAt(i);
+      }
+      return new Blob([bytes], { type: 'application/pdf' });
+    } else {
+      throw new Error('No PDF content received');
     }
-    
-    return pdfResponse.blob();
-  },
+  }
 };
-
-// Export the functions that the app expects
-export async function sendChatMessage(
+// High-level API functions for the frontend
+export async function sendMessage(
   message: string,
   projectDetails?: any,
   accessToken?: string | null,
@@ -183,7 +186,6 @@ export async function sendChatMessage(
     estimateId: result.estimate_id
   };
 }
-
 export async function getEstimate(
   details: any,
   accessToken?: string | null
@@ -193,7 +195,6 @@ export async function getEstimate(
   estimateId: string
 }> {
   const result = await api.createEstimate(details);
-  
   // The backend returns the full estimate response
   // We need to format it for the frontend
   return {
@@ -212,11 +213,9 @@ export async function getEstimate(
     estimateId: result.estimate_id
   };
 }
-
 export async function exportEstimatePDF(estimateId: string): Promise<Blob> {
   // Just call the api.exportPDF method which already returns a blob
   return api.exportPDF(estimateId);
 }
-
 // Export the api object as default
 export default api;
