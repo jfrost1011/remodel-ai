@@ -72,7 +72,8 @@ class RAGService:
         context = {
             'location': None,
             'project_type': None,
-            'is_quality_question': False
+            'is_quality_question': False,
+            'is_followup': False
         }
         
         query_lower = query.lower()
@@ -169,25 +170,25 @@ Keep your response conversational and brief."""
                 cached_data = session_cache[cache_key]
                 print(f"Using cached data for quality question: {cache_key}")
                 
-            prompt = f"""You are a construction cost advisor. The user previously asked about {cached_data['project_type']} remodel in {cached_data['location']}.
+                prompt = f"""You are a construction cost advisor. The user previously asked about {cached_data['project_type']} remodel in {cached_data['location']}.
 
-            You provided these costs:
-            - Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
-            - Average: ${cached_data['cost_average']:,.0f}
-            - Timeline: {cached_data['timeline']} weeks
+You provided these costs:
+- Cost range: ${cached_data['cost_low']:,.0f} to ${cached_data['cost_high']:,.0f}
+- Average: ${cached_data['cost_average']:,.0f}
+- Timeline: {cached_data['timeline']} weeks
 
-            Current question: {query}
+Current question: {query}
 
-            Based on these costs, explain the quality level. Generally:
-            - Under $30,000: Budget/economy level
-            - $30,000-$60,000: Mid-range quality
-            - $60,000-$100,000: High-end quality
-            - Over $100,000: Luxury level
+Based on these costs, explain the quality level. Generally:
+- Under $30,000: Budget/economy level
+- $30,000-$60,000: Mid-range quality
+- $60,000-$100,000: High-end quality
+- Over $100,000: Luxury level
 
-            Be consistent with the numbers you already provided. Do NOT provide different numbers or mention other locations."""
+Be consistent with the numbers you already provided. Do NOT provide different numbers or mention other locations."""
                 
-            response = await self.llm.ainvoke(prompt)
-            return {
+                response = await self.llm.ainvoke(prompt)
+                return {
                     "message": response.content,
                     "source_documents": cached_data.get('source_documents', [])
                 }
