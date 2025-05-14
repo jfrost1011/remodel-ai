@@ -1,10 +1,11 @@
 import os
+import uuid
 from typing import Optional, List, Dict, Any, Tuple
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain.chains import RetrievalQA
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
-from langchain.memory import ConversationBufferMemory
 from pinecone import Pinecone as PineconeClient
 from config import settings
 import logging
@@ -28,8 +29,11 @@ class RAGService:
             model=settings.embedding_model
         )
         
-        # Session data cache
-        self.session_data_cache = {}
+        # Session memory storage
+        self.session_memory = {}
+        
+        # Session context tracking
+        self.session_context = {}
         
         # Define minimum realistic costs for each project type
         self.min_realistic_costs = {
@@ -52,46 +56,71 @@ class RAGService:
                 pinecone_api_key=settings.pinecone_api_key
             )
             
-            # Create retrieval chain
-            self.qa_chain = self._create_qa_chain()
             print("Pinecone vector store initialized successfully")
                 
         except Exception as e:
             print(f"Warning: Could not initialize Pinecone: {str(e)}")
             self.vector_store = None
-            self.qa_chain = None
     
-    def _create_qa_chain(self):
-        """Create a retrieval QA chain with custom prompt"""
-        prompt_template = """You are an expert AI construction cost advisor specializing in California residential construction.
+    def get_or_create_memory(self, session_id: str) -> ConversationBufferWindowMemory:
+        """Get or create conversation memory for a session"""
+        if session_id not in self.session_memory:
+            self.session_memory[session_id] = ConversationBufferWindowMemory(
+                k=5,  # Keep last 5 exchanges
+                memory_key="chat_history",
+                return_messages=True,
+                output_key="answer"
+            )
+        return self.session_memory[session_id]
+    
+    def get_or_create_context(self, session_id: str) -> Dict[str, Any]:
+        """Get or create context tracking for a session"""
+        if session_id not in self.session_context:
+            self.session_context[session_id] = {
+                'location': None,
+                'project_type': None,
+                'last_discussed_project': None,
+                'last_cost_range': None,
+                'last_timeline': None
+            }
+        return self.session_context[session_id]
+    
+    def create_qa_chain(self, session_id: str):
+        """Create a conversational retrieval chain with memory"""
+        memory = self.get_or_create_memory(session_id)
         
-Context: {context}
+        # Custom prompt that emphasizes context preservation
+        prompt_template = """You are an expert AI construction cost advisor specializing in California residential construction.
 
-Question: {question}
+        Current conversation context:
+        {chat_history}
 
-Instructions:
-- Provide accurate cost estimates and timelines based on the context
-- Focus only on the specific location mentioned (San Diego or Los Angeles)
-- Include both cost ranges and timeline information
-- Be conversational but professional
-- If the costs seem low, mention these may be budget-level options
-- For quality questions, explain what different price points typically mean
+        Context from search:
+        {context}
 
-Answer:"""
+        Current question: {question}
+
+        IMPORTANT INSTRUCTIONS:
+        1. ALWAYS maintain the context of the conversation. If we were discussing a specific project type, continue discussing that unless the user explicitly changes topics.
+        2. If the user asks follow-up questions, refer to the previous information you provided.
+        3. Be consistent with any numbers, timelines, or estimates you've already given.
+        4. For San Diego and Los Angeles, focus only on the location already being discussed.
+        5. If uncertain about context, ask for clarification rather than changing topics.
+
+        Answer:"""
         
         PROMPT = PromptTemplate(
             template=prompt_template,
-            input_variables=["context", "question"]
+            input_variables=["chat_history", "context", "question"]
         )
         
-        return RetrievalQA.from_chain_type(
+        return ConversationalRetrievalChain.from_llm(
             llm=self.llm,
-            chain_type="stuff",
-            retriever=self.vector_store.as_retriever(
-                search_kwargs={"k": 5}
-            ),
-            chain_type_kwargs={"prompt": PROMPT},
-            return_source_documents=True
+            retriever=self.vector_store.as_retriever(search_kwargs={"k": 3}),
+            memory=memory,
+            combine_docs_chain_kwargs={"prompt": PROMPT},
+            return_source_documents=True,
+            verbose=True
         )
     
     def is_construction_query(self, query: str) -> bool:
@@ -109,73 +138,51 @@ Answer:"""
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
     
-    def extract_context_from_history(self, query: str, chat_history: List[Tuple[str, str]]) -> Dict[str, Any]:
-        """Extract context from conversation history"""
-        context = {
-            'location': None,
-            'project_type': None,
-            'is_quality_question': False,
-            'is_followup': False
-        }
-        
+    def extract_and_update_context(self, query: str, session_id: str) -> Dict[str, Any]:
+        """Extract context from query and update session context"""
+        context = self.get_or_create_context(session_id)
         query_lower = query.lower()
         
-        # Check if this is a quality-related question
-        quality_keywords = ['high end', 'low end', 'mid range', 'luxury', 'standard', 'basic', 'quality', 'that for', 'economy']
-        context['is_quality_question'] = any(keyword in query_lower for keyword in quality_keywords)
-        
-        # Extract from current query
+        # Check for location mentions
         if 'san diego' in query_lower:
             context['location'] = 'San Diego'
         elif 'los angeles' in query_lower or ' la ' in query_lower:
             context['location'] = 'Los Angeles'
         
+        # Check for project type mentions
         project_types = {
             'kitchen': ['kitchen'],
             'bathroom': ['bathroom', 'bath'],
             'room_addition': ['room addition', 'addition'],
             'adu': ['adu', 'accessory dwelling'],
-            'garage': ['garage']
+            'garage': ['garage'],
+            'landscaping': ['landscaping', 'landscape']
         }
         
         for ptype, keywords in project_types.items():
             for keyword in keywords:
                 if keyword in query_lower:
                     context['project_type'] = ptype
+                    context['last_discussed_project'] = ptype
                     break
         
-        # If not found in current query, check history
-        if not context['location'] or not context['project_type']:
-            context['is_followup'] = True
-            # Look through history from most recent to oldest
-            for human, ai in reversed(chat_history[-3:]):
-                human_lower = human.lower()
-                ai_lower = ai.lower()
-            
-                if not context['location']:
-                    if 'san diego' in human_lower or 'san diego' in ai_lower:
-                        context['location'] = 'San Diego'
-                    elif 'los angeles' in human_lower or 'los angeles' in ai_lower:
-                        context['location'] = 'Los Angeles'
-            
-                if not context['project_type']:
-                    for ptype, keywords in project_types.items():
-                        for keyword in keywords:
-                            if keyword in human_lower or keyword in ai_lower:
-                                context['project_type'] = ptype
-                                break
-            
-                if context['location'] and context['project_type']:
-                    break
+        # Check for cost level mentions
+        if 'budget' in query_lower or 'low end' in query_lower:
+            context['last_cost_range'] = 'budget'
+        elif 'mid range' in query_lower or 'middle' in query_lower:
+            context['last_cost_range'] = 'mid-range'
+        elif 'high end' in query_lower or 'luxury' in query_lower:
+            context['last_cost_range'] = 'high-end'
         
         return context
 
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
         """Get response from the RAG system"""
         logger.info(f"Getting chat response for query: {query}")
+        logger.info(f"Session ID: {session_id}")
         
         # Handle non-construction queries
-        if not self.is_construction_query(query):
+        if not self.is_construction_query(query) and not session_id:
             prompt = f"""You are a friendly AI assistant for a construction cost estimation service.
 The user said: "{query}"
 
@@ -188,47 +195,45 @@ Keep your response conversational and brief."""
                 "source_documents": []
             }
         
-        if not self.qa_chain:
+        if not self.vector_store:
             return {
                 "message": "I'm sorry, but I'm having trouble accessing the construction database. Please check back later.",
                 "source_documents": []
             }
         
+        # Ensure we have a session ID
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        
         try:
-            # Extract context from conversation
-            context = self.extract_context_from_history(query, chat_history)
-            logger.info(f"Extracted context: {context}")
+            # Extract and update context
+            context = self.extract_and_update_context(query, session_id)
+            logger.info(f"Current context: {context}")
             
-            # Get or create session cache
-            if session_id and session_id not in self.session_data_cache:
-                self.session_data_cache[session_id] = {}
+            # Create or get the conversational chain for this session
+            qa_chain = self.create_qa_chain(session_id)
             
-            session_cache = self.session_data_cache.get(session_id, {}) if session_id else {}
-            
-            # Enhance query with context if available
+            # Enhance query with context only if we're missing information
             enhanced_query = query
-            if context['location'] and context['project_type']:
-                enhanced_query = f"{context['project_type']} remodel in {context['location']}: {query}"
-            elif context['location']:
-                enhanced_query = f"In {context['location']}: {query}"
-            elif context['project_type']:
-                enhanced_query = f"{context['project_type']} remodel: {query}"
+            if context.get('last_discussed_project') and 'kitchen' not in query.lower() and 'bathroom' not in query.lower():
+                # If we have a previously discussed project and the current query doesn't mention a specific project
+                enhanced_query = f"Regarding the {context['last_discussed_project']} remodel we were discussing: {query}"
             
-            # Use LangChain's QA chain
-            result = await self.qa_chain.ainvoke({"query": enhanced_query})
+            logger.info(f"Enhanced query: {enhanced_query}")
             
-            # Cache the results if we have complete context
-            if context['location'] and context['project_type']:
-                cache_key = f"{context['location']}_{context['project_type']}"
-                session_cache[cache_key] = {
-                    'response': result['result'],
-                    'source_documents': result.get('source_documents', [])
-                }
-                if session_id:
-                    self.session_data_cache[session_id] = session_cache
+            # Use the conversational chain
+            result = await qa_chain.ainvoke({"question": enhanced_query})
+            
+            # Extract timeline and cost info from response for context tracking
+            response_text = result.get('answer', '')
+            if 'weeks' in response_text.lower():
+                import re
+                weeks_match = re.search(r'(\d+)\s*(?:to|-)\s*(\d+)\s*weeks', response_text.lower())
+                if weeks_match:
+                    context['last_timeline'] = f"{weeks_match.group(1)}-{weeks_match.group(2)} weeks"
             
             return {
-                "message": result['result'],
+                "message": response_text,
                 "source_documents": result.get('source_documents', [])
             }
             
