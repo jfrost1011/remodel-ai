@@ -11,8 +11,11 @@ from pinecone import Pinecone as PineconeClient
 from config import settings
 import logging
 import json
+import re
 
 logger = logging.getLogger(__name__)
+from services.context_manager import ContextManager, ConversationContext
+from services.city_mappings import normalize_location, CITY_MAPPINGS
 
 class RAGService:
     def __init__(self):
@@ -32,7 +35,7 @@ class RAGService:
         )
         
         # Session storage for memory and context
-        self.sessions = {}
+        self.context_manager = ContextManager()
         
         # Define minimum realistic costs for each project type
         self.min_realistic_costs = {
@@ -63,7 +66,9 @@ class RAGService:
     
     def get_or_create_session(self, session_id: str) -> Dict[str, Any]:
         """Get or create a session with memory and context"""
-        if session_id not in self.sessions:
+        context = self.context_manager.get_or_create_context(session_id)
+        # Check if this is a new session
+        if context.metadata.get('qa_chain') is None:
             # Create memory for this session
             memory = ConversationSummaryBufferMemory(
                 llm=self.llm,
@@ -72,28 +77,19 @@ class RAGService:
                 return_messages=True,
                 output_key="answer"
             )
-            
-            # Create context tracking
-            context = {
-                'location': None,
-                'project_type': None,
-                'budget_range': None,
-                'timeline': None,
-                'discussed_prices': {},
-                'specific_features': []
-            }
-            
             # Create QA chain for this session
             qa_chain = self._create_qa_chain(memory)
-            
-            self.sessions[session_id] = {
-                'memory': memory,
-                'context': context,
-                'qa_chain': qa_chain,
-                'conversation_summary': ""
-            }
-        
-        return self.sessions[session_id]
+            # Update metadata with chain and memory
+            context.metadata['qa_chain'] = qa_chain
+            context.metadata['memory'] = memory
+            # Save context
+            self.context_manager.save_context(session_id, context)
+        return {
+            'memory': context.metadata.get('memory'),
+            'context': context,
+            'qa_chain': context.metadata.get('qa_chain'),
+            'conversation_summary': context.conversation_summary
+        }
     
     def _create_qa_chain(self, memory):
         """Create a conversational retrieval chain with memory"""
@@ -147,18 +143,24 @@ class RAGService:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in construction_keywords)
     
-    def update_session_context(self, query: str, response: str, session: Dict[str, Any]):
+    def update_session_context(self, query: str, response: str, session_id: str):
         """Update session context based on query and response"""
-        context = session['context']
+        context = self.context_manager.get_or_create_context(session_id)
         query_lower = query.lower()
         response_lower = response.lower()
-        
+        updates = {}
         # Extract location
-        if 'san diego' in query_lower or 'san diego' in response_lower:
-            context['location'] = 'San Diego'
-        elif 'los angeles' in query_lower or 'los angeles' in response_lower:
-            context['location'] = 'Los Angeles'
-        
+        # Extract location using city mappings
+        query_location = normalize_location(query_lower)
+        response_location = normalize_location(response_lower)
+        # Check if user is explicitly changing location
+        if "instead" in query_lower or "what about" in query_lower or "switch to" in query_lower:
+            if query_location:
+                updates['location'] = query_location
+        elif query_location:
+            updates['location'] = query_location
+        elif response_location and not context.location:
+            updates['location'] = response_location
         # Extract project type
         project_types = {
             'kitchen': ['kitchen'],
@@ -167,28 +169,93 @@ class RAGService:
             'adu': ['adu', 'accessory dwelling'],
             'garage': ['garage']
         }
-        
         for ptype, keywords in project_types.items():
             for keyword in keywords:
                 if keyword in query_lower or keyword in response_lower:
-                    context['project_type'] = ptype
+                    updates['project_type'] = ptype
                     break
-        
         # Extract price information from response
-        import re
         price_pattern = r'\$(\d{1,3}(?:,\d{3})*)'
         prices = re.findall(price_pattern, response)
-        if prices and context.get('project_type'):
-            context['discussed_prices'][context['project_type']] = prices
-        
+        if prices and context.project_type:
+            if not context.discussed_prices:
+                context.discussed_prices = {}
+            context.discussed_prices[context.project_type] = prices
+            updates['discussed_prices'] = context.discussed_prices
         # Extract timeline information
         timeline_pattern = r'(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?'
         timeline_match = re.search(timeline_pattern, response_lower)
         if timeline_match:
-            context['timeline'] = f"{timeline_match.group(1)}-{timeline_match.group(2)} weeks"
-        
+            updates['timeline'] = f"{timeline_match.group(1)}-{timeline_match.group(2)} weeks"
         # Update conversation summary
-        session['conversation_summary'] = f"Discussing {context.get('project_type', 'construction')} project in {context.get('location', 'California')}. Budget discussed: {context.get('discussed_prices', {})}. Timeline: {context.get('timeline', 'Not discussed')}."
+        summary = f"Discussing {context.project_type or 'construction'} project in {context.location or 'California'}. Budget discussed: {context.discussed_prices or {}}. Timeline: {context.timeline or 'Not discussed'}."
+        updates['conversation_summary'] = summary
+        # Calculate budget range from discussed prices
+        if context.discussed_prices and context.project_type:
+            project_prices = context.discussed_prices.get(context.project_type, [])
+            if project_prices:
+                numeric_prices = []
+                for price in project_prices:
+                    try:
+                        numeric_price = int(price.replace(',', ''))
+                        numeric_prices.append(numeric_price)
+                    except:
+                        continue
+                if numeric_prices:
+                    updates['budget_range'] = {
+                        "min": min(numeric_prices),
+                        "max": max(numeric_prices)
+                    }
+        # Update context with all changes
+        # Get the context
+        context = self.context_manager.get_or_create_context(session_id)
+        # Apply updates
+        for key, value in updates.items():
+            if hasattr(context, key):
+                setattr(context, key, value)
+        # Save the updated context
+        self.context_manager.save_context(session_id, context)
+    async def _validate_and_correct_response(self, response_text: str, session_id: str) -> str:
+        """Validate response consistency with known context and correct if needed"""
+        context = self.context_manager.get_or_create_context(session_id)
+        # Check for price consistency
+        if context.discussed_prices and context.project_type:
+            known_prices = context.discussed_prices.get(context.project_type, [])
+            if known_prices:
+                # Extract prices from response
+                response_prices = re.findall(r'\$(\d{1,3}(?:,\d{3})*)', response_text)
+                if response_prices and known_prices:
+                    # Check if response prices differ significantly from known prices
+                    response_min = min(int(p.replace(',', '')) for p in response_prices)
+                    response_max = max(int(p.replace(',', '')) for p in response_prices)
+                    known_min = min(int(p.replace(',', '')) for p in known_prices)
+                    known_max = max(int(p.replace(',', '')) for p in known_prices)
+                    # If there's a significant discrepancy, correct it
+                    if abs(response_min - known_min) > 5000 or abs(response_max - known_max) > 10000:
+                        correction_prompt = f"""
+                        The response appears inconsistent with our established budget range of 
+                        ${known_min:,} to ${known_max:,} for this {context.project_type} remodel. 
+                        Original response: {response_text}
+                        Please provide a corrected response that maintains consistency with the previously 
+                        discussed budget range while answering the user's question.
+                        """
+                        corrected = await self.llm.ainvoke(correction_prompt)
+                        return corrected.content
+        # Check for timeline consistency
+        if context.timeline:
+            # Extract timeline from response
+            timeline_pattern = r'(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?'
+            response_timeline = re.search(timeline_pattern, response_text)
+            if response_timeline and context.timeline != f"{response_timeline.group(1)}-{response_timeline.group(2)} weeks":
+                correction_prompt = f"""
+                The response timeline appears inconsistent with our established timeline of {context.timeline}. 
+                Original response: {response_text}
+                Please provide a corrected response that maintains consistency with the previously 
+                discussed timeline while answering the user's question.
+                """
+                corrected = await self.llm.ainvoke(correction_prompt)
+                return corrected.content
+        return response_text
 
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
         """Get response from the RAG system"""
@@ -203,7 +270,7 @@ class RAGService:
         session = self.get_or_create_session(session_id)
         
         # Handle greetings but keep session active
-        if not self.is_construction_query(query) and not session['context']['project_type']:
+        if not self.is_construction_query(query) and not session['context'].project_type:
             prompt = f"""You are a friendly AI assistant for a construction cost estimation service.
 The user said: "{query}"
 
@@ -231,12 +298,12 @@ Keep your response conversational and brief."""
             enhanced_query = query
             
             # Add context to maintain conversation continuity
-            if context['project_type'] and 'kitchen' not in query.lower() and 'bathroom' not in query.lower():
-                enhanced_query = f"Regarding the {context['project_type']} remodel we're discussing: {query}"
+            if context.project_type and 'kitchen' not in query.lower() and 'bathroom' not in query.lower():
+                enhanced_query = f"Regarding the {context.project_type} remodel we're discussing: {query}"
             
             # Include location context if relevant
-            if context['location'] and context['location'].lower() not in query.lower():
-                enhanced_query = f"In {context['location']}, {enhanced_query}"
+            if context.location and context.location.lower() not in query.lower():
+                enhanced_query = f"In {context.location}, {enhanced_query}"
             
             logger.info(f"Enhanced query: {enhanced_query}")
             
@@ -245,11 +312,13 @@ Keep your response conversational and brief."""
             
             response_text = result.get('answer', '')
             
+            # Validate and correct response if needed
+            response_text = await self._validate_and_correct_response(response_text, session_id)
             # Update session context with this exchange
-            self.update_session_context(query, response_text, session)
+            self.update_session_context(query, response_text, session_id)
             
             # Log the updated context
-            logger.info(f"Updated context: {session['context']}")
+            logger.info(f"Updated context: {session['context'].to_dict()}")
             
             return {
                 "message": response_text,
