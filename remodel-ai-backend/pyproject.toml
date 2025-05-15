@@ -22,7 +22,8 @@ dependencies = [
     "google-search-results",
     "pytest",
     "pytest-asyncio",
-    "python-multipart"
+    "python-multipart",
+    "redis>=6.1.0",
 ]
 [build-system]
 requires = ["hatchling"]

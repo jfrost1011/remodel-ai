@@ -1,4 +1,6 @@
+﻿from dotenv import load_dotenv
 import os
+load_dotenv()
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 @dataclass
@@ -37,3 +39,6 @@ settings = Settings(
     redis_db=int(os.getenv("REDIS_DB", "0")),
     session_ttl=int(os.getenv("SESSION_TTL", "3600"))
 )
+
+# Cache for estimates
+estimates_cache: Dict[str, Any] = {}
