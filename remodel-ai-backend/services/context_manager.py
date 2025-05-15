@@ -58,9 +58,6 @@ class ContextManager:
         # Initialize Redis connection
         try:
             self.redis_client = settings.get_redis_connection()
-                host=settings.redis_host,
-                port=settings.redis_port,
-                db=settings.redis_db,
             self.redis_client.ping()
             logger.info("Redis connection established")
         except Exception as e:
