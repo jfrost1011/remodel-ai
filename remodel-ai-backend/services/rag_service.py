@@ -98,27 +98,41 @@ class RAGService:
     
     def _create_qa_chain(self, memory):
         """Create a conversational retrieval chain with memory"""
-        # System prompt that strongly emphasizes context preservation
+        # REPLACED SYSTEM TEMPLATE WITH NEW VERSION
         system_template = """You are an expert AI construction cost advisor specializing in California residential construction, particularly in San Diego and Los Angeles.
 
-        CRITICAL INSTRUCTIONS:
-        1. ALWAYS maintain the context of the conversation. If discussing a specific project type (like kitchen remodel), continue with that context unless the user explicitly changes topics.
-        2. Reference specific numbers and details you've already provided in the conversation.
-        3. When asked follow-up questions, directly refer to your previous answers.
-        4. Stay focused on the specific project type being discussed.
-        5. If the user asks about timelines after discussing a kitchen remodel, give the kitchen remodel timeline, not general construction timelines.
-        6. Remember and use the exact price ranges you've mentioned earlier in the conversation.
-        
-        Previous conversation summary: {chat_history}
-        
-        Context from search: {context}
-        
-        Human: {question}
-        
-        CRITICAL: When asked about any previous information (like budget, location, project type), you MUST reference the specific details already discussed. Never say you don't remember or need the information again.
-        
-        Assistant: I'll respond based on our ongoing conversation about your specific project."""
-        
+CRITICAL INSTRUCTIONS:
+1. ALWAYS maintain the context of the conversation. If discussing a specific project type (like kitchen remodel), continue with that context unless the user explicitly changes topics.
+2. Reference specific numbers and details you've already provided in the conversation.
+3. When asked follow-up questions, directly refer to your previous answers.
+4. Stay focused on the specific project type being discussed.
+5. If the user asks about timelines after discussing a kitchen remodel, give the kitchen remodel timeline, not general construction timelines.
+6. Remember and use the exact price ranges you've mentioned earlier in the conversation.
+
+IMPORTANT: Never ask for information that the user has already provided. If the user has already stated their budget, location, or project type, do NOT ask for it again. Instead, acknowledge what they've said and provide relevant information based on their input.
+
+For San Diego specifically:
+- Permit costs typically range from $1,200-$2,500 for kitchen remodels
+- Local labor rates average $75-95/hour for skilled contractors
+- Popular materials include quartz countertops and solid wood cabinets
+- Timeline typically runs 6-8 weeks for standard kitchen remodels
+- Project costs often include a 10% contingency for unexpected issues
+
+When the user provides budget information:
+- For budgets under $25,000: Suggest stock cabinets, laminate countertops, and keeping existing layout
+- For budgets $25,000-$50,000: Suggest semi-custom cabinets, quartz countertops, and minor layout changes
+- For budgets over $50,000: Suggest custom cabinets, high-end appliances, and major layout changes
+
+Previous conversation summary: {chat_history}
+
+Context from search: {context}
+
+Human: {question}
+
+CRITICAL: When asked about any previous information (like budget, location, project type), you MUST reference the specific details already discussed. Never say you don't remember or need the information again.
+
+Assistant: I'll respond based on our ongoing conversation about your specific project."""
+
         messages = [
             SystemMessagePromptTemplate.from_template(system_template),
             HumanMessagePromptTemplate.from_template("{question}")
@@ -156,10 +170,11 @@ class RAGService:
         query_lower = query.lower()
         response_lower = response.lower()
         updates = {}
-        # Extract location
+        
         # Extract location using city mappings
         query_location = normalize_location(query_lower)
         response_location = normalize_location(response_lower)
+        
         # Check if user is explicitly changing location
         if "instead" in query_lower or "what about" in query_lower or "switch to" in query_lower:
             if query_location:
@@ -168,6 +183,7 @@ class RAGService:
             updates['location'] = query_location
         elif response_location and not context.location:
             updates['location'] = response_location
+        
         # Extract project type
         project_types = {
             'kitchen': ['kitchen'],
@@ -181,6 +197,7 @@ class RAGService:
                 if keyword in query_lower or keyword in response_lower:
                     updates['project_type'] = ptype
                     break
+        
         # Extract price information from response
         price_pattern = r'\$(\d{1,3}(?:,\d{3})*)'
         prices = re.findall(price_pattern, response)
@@ -189,14 +206,17 @@ class RAGService:
                 context.discussed_prices = {}
             context.discussed_prices[context.project_type] = prices
             updates['discussed_prices'] = context.discussed_prices
+        
         # Extract timeline information
         timeline_pattern = r'(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?'
         timeline_match = re.search(timeline_pattern, response_lower)
         if timeline_match:
             updates['timeline'] = f"{timeline_match.group(1)}-{timeline_match.group(2)} weeks"
+        
         # Update conversation summary
         summary = f"Discussing {context.project_type or 'construction'} project in {context.location or 'California'}. Budget discussed: {context.discussed_prices or {}}. Timeline: {context.timeline or 'Not discussed'}."
         updates['conversation_summary'] = summary
+        
         # Calculate budget range from discussed prices
         if context.discussed_prices and context.project_type:
             project_prices = context.discussed_prices.get(context.project_type, [])
@@ -213,19 +233,21 @@ class RAGService:
                         "min": min(numeric_prices),
                         "max": max(numeric_prices)
                     }
-        # Update context with all changes
-        # Get the context
+        
+        # Get the context again (to ensure we have the latest)
         context = self.context_manager.get_or_create_context(session_id)
         # Apply updates
         for key, value in updates.items():
             if hasattr(context, key):
                 setattr(context, key, value)
+        
         # Save the updated context
         self.context_manager.save_context(session_id, context)
     
     async def _validate_and_correct_response(self, response_text: str, session_id: str) -> str:
         """Validate response consistency with known context and correct if needed"""
         context = self.context_manager.get_or_create_context(session_id)
+        
         # Check for price consistency
         if context.discussed_prices and context.project_type:
             known_prices = context.discussed_prices.get(context.project_type, [])
@@ -249,6 +271,7 @@ class RAGService:
                         """
                         corrected = await self.llm.ainvoke(correction_prompt)
                         return corrected.content
+        
         # Check for timeline consistency
         if context.timeline:
             # Extract timeline from response
@@ -263,6 +286,7 @@ class RAGService:
                 """
                 corrected = await self.llm.ainvoke(correction_prompt)
                 return corrected.content
+        
         return response_text
 
     async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
