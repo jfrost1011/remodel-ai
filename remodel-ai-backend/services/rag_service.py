@@ -70,7 +70,6 @@ class RAGService:
         """Get or create a session with memory and context"""
         context = self.context_manager.get_or_create_context(session_id)
         # Check if this is a new session
-        # Check if this is a new session
         session_key = f'session_{session_id}'
         if session_key not in self.sessions:
             # Create memory for this session
@@ -83,9 +82,7 @@ class RAGService:
             )
             # Create QA chain for this session
             qa_chain = self._create_qa_chain(memory)
-            # Update metadata with chain and memory
             # Store non-serializable objects in sessions dict
-            session_key = f'session_{session_id}'
             self.sessions[session_key] = {
                 'qa_chain': qa_chain,
                 'memory': memory
@@ -117,6 +114,8 @@ class RAGService:
         Context from search: {context}
         
         Human: {question}
+        
+        CRITICAL: When asked about any previous information (like budget, location, project type), you MUST reference the specific details already discussed. Never say you don't remember or need the information again.
         
         Assistant: I'll respond based on our ongoing conversation about your specific project."""
         
@@ -223,6 +222,7 @@ class RAGService:
                 setattr(context, key, value)
         # Save the updated context
         self.context_manager.save_context(session_id, context)
+    
     async def _validate_and_correct_response(self, response_text: str, session_id: str) -> str:
         """Validate response consistency with known context and correct if needed"""
         context = self.context_manager.get_or_create_context(session_id)
@@ -276,9 +276,10 @@ class RAGService:
         
         # Get or create session
         session = self.get_or_create_session(session_id)
+        context = session['context']
         
         # Handle greetings but keep session active
-        if not self.is_construction_query(query) and not session['context'].project_type:
+        if not self.is_construction_query(query) and not context.project_type:
             prompt = f"""You are a friendly AI assistant for a construction cost estimation service.
 The user said: "{query}"
 
@@ -302,16 +303,12 @@ Keep your response conversational and brief."""
             qa_chain = session['qa_chain']
             
             # Create an enhanced query that includes critical context
-            context = session['context']
             enhanced_query = query
             
-            # Add context to maintain conversation continuity
-            if context.project_type and 'kitchen' not in query.lower() and 'bathroom' not in query.lower():
-                enhanced_query = f"Regarding the {context.project_type} remodel we're discussing: {query}"
-            
-            # Include location context if relevant
-            if context.location and context.location.lower() not in query.lower():
-                enhanced_query = f"In {context.location}, {enhanced_query}"
+            # Get context prompt from context manager
+            context_prompt = self.context_manager.get_context_prompt(context)
+            if context_prompt:
+                enhanced_query = f"{context_prompt} {query}"
             
             logger.info(f"Enhanced query: {enhanced_query}")
             
@@ -322,11 +319,16 @@ Keep your response conversational and brief."""
             
             # Validate and correct response if needed
             response_text = await self._validate_and_correct_response(response_text, session_id)
-            # Update session context with this exchange
-            self.update_session_context(query, response_text, session_id)
+            
+            # Use context manager's update method
+            updated_context = self.context_manager.update_context_from_exchange(
+                session_id=session_id,
+                query=query,
+                response=response_text
+            )
             
             # Log the updated context
-            logger.info(f"Updated context: {session['context'].to_dict()}")
+            logger.info(f"Updated context after exchange: {updated_context.to_dict()}")
             
             return {
                 "message": response_text,
