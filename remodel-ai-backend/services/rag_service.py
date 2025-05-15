@@ -95,7 +95,7 @@ class RAGService:
         return {
             'memory': self.sessions.get(f'session_{session_id}', {}).get('memory'),
             'context': context,
-            'qa_chain': self.sessions.get(f'session_{session_id}', {}).get('qa_chain')
+            'qa_chain': self.sessions.get(f'session_{session_id}', {}).get('qa_chain'),
             'conversation_summary': context.conversation_summary
         }
     
