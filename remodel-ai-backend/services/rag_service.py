@@ -1,4 +1,4 @@
-import os
+﻿import os
 import uuid
 from typing import Optional, List, Dict, Any, Tuple
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -36,6 +36,8 @@ class RAGService:
         
         # Session storage for memory and context
         self.context_manager = ContextManager()
+        # Store non-serializable objects separately
+        self.sessions = {}  # Store qa_chain and memory objects
         
         # Define minimum realistic costs for each project type
         self.min_realistic_costs = {
@@ -68,7 +70,9 @@ class RAGService:
         """Get or create a session with memory and context"""
         context = self.context_manager.get_or_create_context(session_id)
         # Check if this is a new session
-        if context.metadata.get('qa_chain') is None:
+        # Check if this is a new session
+        session_key = f'session_{session_id}'
+        if session_key not in self.sessions:
             # Create memory for this session
             memory = ConversationSummaryBufferMemory(
                 llm=self.llm,
@@ -80,14 +84,18 @@ class RAGService:
             # Create QA chain for this session
             qa_chain = self._create_qa_chain(memory)
             # Update metadata with chain and memory
-            context.metadata['qa_chain'] = qa_chain
-            context.metadata['memory'] = memory
+            # Store non-serializable objects in sessions dict
+            session_key = f'session_{session_id}'
+            self.sessions[session_key] = {
+                'qa_chain': qa_chain,
+                'memory': memory
+            }
             # Save context
             self.context_manager.save_context(session_id, context)
         return {
-            'memory': context.metadata.get('memory'),
+            'memory': self.sessions.get(f'session_{session_id}', {}).get('memory'),
             'context': context,
-            'qa_chain': context.metadata.get('qa_chain'),
+            'qa_chain': self.sessions.get(f'session_{session_id}', {}).get('qa_chain')
             'conversation_summary': context.conversation_summary
         }
     
