@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List
+﻿from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
 import redis
@@ -57,12 +57,7 @@ class ContextManager:
     def __init__(self):
         # Initialize Redis connection
         try:
-            self.redis_client = redis.Redis(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                db=settings.redis_db,
-                decode_responses=True
-            )
+            self.redis_client = settings.get_redis_connection()
             self.redis_client.ping()
             logger.info("Redis connection established")
         except Exception as e:
