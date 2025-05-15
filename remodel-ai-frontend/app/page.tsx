@@ -43,6 +43,7 @@ export default function Home() {
   const [isProjectDetailsOpen, setIsProjectDetailsOpen] = useState(false)
   const [isAboutOpen, setIsAboutOpen] = useState(false)
   const [showEstimateReport, setShowEstimateReport] = useState(false)
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined)
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -76,13 +77,14 @@ export default function Home() {
   // Function to reset the state for a new estimate
   const handleNewEstimate = () => {
     setShowEstimateReport(false)
+    setSessionId(undefined)
     setCostBreakdown({
       total: 0,
       labor: 0,
       materials: 0,
       permits: 0,
       other: 0,
-      })
+    })
     setProjectDetails({
       projectType: "",
       propertyType: "",
@@ -121,12 +123,18 @@ export default function Home() {
       // Get access token if authenticated
       const accessToken = isAuthenticated ? await getAccessToken() : null
 
-      // Send message to API
-      const { response, estimateData } = await sendMessage(
+      // Send message to API with sessionId
+      const { response, estimateData, sessionId: newSessionId } = await sendMessage(
         message,
         (costBreakdown?.total ?? 0) > 0 ? projectDetails : undefined,
         accessToken,
+        sessionId
       )
+
+      // Update sessionId if we get a new one (first message)
+      if (newSessionId && !sessionId) {
+        setSessionId(newSessionId)
+      }
 
       // Add AI response to chat
       const newAiMessage: Message = {
@@ -140,7 +148,7 @@ export default function Home() {
       // If the API returned estimate data, update the state
       if (estimateData) {
         setCostBreakdown(estimateData.costBreakdown)
-      setEstimateId(estimateData?.estimateId || "")
+        setEstimateId(estimateData?.estimateId || "")
         setTimeline(estimateData.timeline)
         setConfidence(estimateData.confidence)
       }
@@ -267,10 +275,3 @@ export default function Home() {
     </div>
   )
 }
-
-
-
-
-
-
-
