@@ -60,32 +60,41 @@ class ContextManager:
             self.redis_client = settings.get_redis_connection()
             self.redis_client.ping()
             logger.info("Redis connection established")
+            print("DEBUG: ContextManager - Redis connection established")
         except Exception as e:
             logger.error(f"Redis connection failed: {str(e)}")
+            print(f"DEBUG: ContextManager - Redis connection failed: {str(e)}")
             # Fallback to in-memory storage
             self.redis_client = None
             self.memory_store = {}
     
     def get_or_create_context(self, session_id: str) -> ConversationContext:
         """Get existing context or create new one"""
+        print(f"DEBUG: Getting context for session {session_id}")
         context = ConversationContext()
         context.session_id = session_id
         
         # Try to get from Redis
         if self.redis_client:
             try:
-                data = self.redis_client.get(f"context:{session_id}")
+                redis_key = f"context:{session_id}"
+                data = self.redis_client.get(redis_key)
                 if data:
                     context.from_dict(json.loads(data))
                     logger.info(f"Loaded context for session {session_id}")
+                    print(f"DEBUG: Loaded context from Redis for session {session_id}")
+                    print(f"DEBUG: Context data: {json.loads(data)}")
                 else:
                     logger.info(f"Created new context for session {session_id}")
+                    print(f"DEBUG: No existing context in Redis, created new for session {session_id}")
             except Exception as e:
                 logger.error(f"Redis read error: {str(e)}")
+                print(f"DEBUG: Redis read error: {str(e)}")
         else:
             # Fallback to memory store
             if session_id in self.memory_store:
                 context.from_dict(self.memory_store[session_id])
+                print(f"DEBUG: Loaded context from memory for session {session_id}")
         
         return context
     
@@ -94,26 +103,44 @@ class ContextManager:
         context.last_updated = datetime.now()
         context_data = context.to_dict()
         
+        print(f"DEBUG: Saving context for session {session_id}")
+        print(f"DEBUG: Context data to save: {context_data}")
+        
         if self.redis_client:
             try:
+                redis_key = f"context:{session_id}"
                 self.redis_client.setex(
-                    f"context:{session_id}",
+                    redis_key,
                     settings.session_ttl,  # TTL in seconds
                     json.dumps(context_data)
                 )
                 logger.info(f"Saved context for session {session_id}")
+                print(f"DEBUG: Successfully saved context to Redis for session {session_id}")
+                
+                # Verify it was saved
+                verify = self.redis_client.get(redis_key)
+                if verify:
+                    print(f"DEBUG: Verified context saved in Redis: {verify[:100]}...")
+                
             except Exception as e:
                 logger.error(f"Redis write error: {str(e)}")
+                print(f"DEBUG: Redis write error: {str(e)}")
                 # Fallback to memory
                 self.memory_store[session_id] = context_data
+                print(f"DEBUG: Saved to memory store instead")
         else:
             self.memory_store[session_id] = context_data
+            print(f"DEBUG: Saved to memory store (no Redis)")
     
     def update_context_from_exchange(self, 
                                    session_id: str, 
                                    query: str, 
                                    response: str) -> ConversationContext:
         """Update context based on a query/response exchange"""
+        print(f"DEBUG: Updating context from exchange for session {session_id}")
+        print(f"DEBUG: Query: {query[:100]}...")
+        print(f"DEBUG: Response: {response[:100]}...")
+        
         context = self.get_or_create_context(session_id)
         query_lower = query.lower()
         response_lower = response.lower()
@@ -121,8 +148,10 @@ class ContextManager:
         # Extract location
         if 'san diego' in query_lower or 'san diego' in response_lower:
             context.location = 'San Diego'
+            print(f"DEBUG: Found location: San Diego")
         elif 'los angeles' in query_lower or 'los angeles' in response_lower:
             context.location = 'Los Angeles'
+            print(f"DEBUG: Found location: Los Angeles")
         
         # Extract project type
         project_keywords = {
@@ -137,6 +166,7 @@ class ContextManager:
             for keyword in keywords:
                 if keyword in query_lower or keyword in response_lower:
                     context.project_type = ptype
+                    print(f"DEBUG: Found project type: {ptype}")
                     break
         
         # Extract prices
@@ -144,24 +174,28 @@ class ContextManager:
         price_pattern = r'\$(\d{1,3}(?:,\d{3})*)'
         prices = re.findall(price_pattern, response)
         
-        if prices and context.project_type:
-            # Clean and convert prices
-            clean_prices = [p.replace(',', '') for p in prices]
-            context.discussed_prices[context.project_type] = prices
-            
-            # Update budget range if we have at least 2 prices
-            if len(clean_prices) >= 2:
-                numeric_prices = [int(p) for p in clean_prices]
-                context.budget_range = {
-                    "min": min(numeric_prices),
-                    "max": max(numeric_prices)
-                }
+        if prices:
+            print(f"DEBUG: Found prices: {prices}")
+            if context.project_type:
+                # Clean and convert prices
+                clean_prices = [p.replace(',', '') for p in prices]
+                context.discussed_prices[context.project_type] = prices
+                
+                # Update budget range if we have at least 2 prices
+                if len(clean_prices) >= 2:
+                    numeric_prices = [int(p) for p in clean_prices]
+                    context.budget_range = {
+                        "min": min(numeric_prices),
+                        "max": max(numeric_prices)
+                    }
+                    print(f"DEBUG: Set budget range: {context.budget_range}")
         
         # Extract timeline
         timeline_pattern = r'(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?'
         timeline_match = re.search(timeline_pattern, response_lower)
         if timeline_match:
             context.timeline = f"{timeline_match.group(1)}-{timeline_match.group(2)} weeks"
+            print(f"DEBUG: Found timeline: {context.timeline}")
         
         # Extract specific features mentioned
         feature_keywords = ['appliances', 'countertops', 'cabinets', 'flooring', 
@@ -170,6 +204,7 @@ class ContextManager:
             if feature in query_lower or feature in response_lower:
                 if feature not in context.specific_features:
                     context.specific_features.append(feature)
+                    print(f"DEBUG: Added feature: {feature}")
         
         # Update conversation summary
         if context.project_type and context.location:
@@ -180,8 +215,10 @@ class ContextManager:
                 f"Timeline: {context.timeline or 'Not discussed'}. "
                 f"Features: {', '.join(context.specific_features) or 'None specified'}"
             )
+            print(f"DEBUG: Updated summary: {context.conversation_summary}")
         
         context.turn_count += 1
+        
         # Calculate budget range from discussed prices
         if context.discussed_prices and context.project_type:
             project_prices = context.discussed_prices.get(context.project_type, [])
@@ -198,7 +235,10 @@ class ContextManager:
                         "min": min(numeric_prices),
                         "max": max(numeric_prices)
                     }
-        self.save_context(context)
+                    print(f"DEBUG: Recalculated budget from prices: {context.budget_range}")
+        
+        # FIX: Call save_context with correct parameters
+        self.save_context(session_id, context)
         
         return context
     
@@ -224,7 +264,9 @@ class ContextManager:
             prompt_parts.append(f"including features: {', '.join(context.specific_features)}")
         
         if prompt_parts:
-            return "Context: " + ". ".join(prompt_parts) + "."
+            result = "Context: " + ". ".join(prompt_parts) + "."
+            print(f"DEBUG: Generated context prompt: {result}")
+            return result
         
         return ""
     
