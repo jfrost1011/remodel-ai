@@ -1,368 +1,551 @@
-﻿import os
+﻿# services/rag_service.py
+# ───────────────────────────────────────────────────────────────────────────
+import os
 import uuid
 from typing import Optional, List, Dict, Any, Tuple
+import asyncio
+import aiohttp
+import logging
+import re
+
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationSummaryBufferMemory
-from langchain.prompts import PromptTemplate, ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-from langchain.schema import Document
+from langchain.prompts import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
 from pinecone import Pinecone as PineconeClient
+
 from config import settings
-import logging
-import json
-import re
+from services.context_manager import ContextManager
+from services.city_mappings import normalize_location
 
 logger = logging.getLogger(__name__)
-from services.context_manager import ContextManager, ConversationContext
-from services.city_mappings import normalize_location, CITY_MAPPINGS
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  RAGService
+# ═══════════════════════════════════════════════════════════════════════════
 class RAGService:
     def __init__(self):
-        print("Initializing RAG Service...")
-        
-        # Initialize LLM
+        print("Initializing RAG Service…")
+
+        # ── LLM & embeddings ───────────────────────────────────────────────
         self.llm = ChatOpenAI(
             openai_api_key=settings.openai_api_key,
             model_name=settings.openai_model,
-            temperature=0.3
+            temperature=0.3,
         )
-        
-        # Initialize embeddings
         self.embeddings = OpenAIEmbeddings(
             openai_api_key=settings.openai_api_key,
-            model=settings.embedding_model
+            model=settings.embedding_model,
         )
-        
-        # Session storage for memory and context
+
+        # ── Context manager & session store ────────────────────────────────
         self.context_manager = ContextManager()
-        # Store non-serializable objects separately
-        self.sessions = {}  # Store qa_chain and memory objects
-        
-        # Define minimum realistic costs for each project type
-        self.min_realistic_costs = {
-            'kitchen': 25000,
-            'bathroom': 10000,
-            'room_addition': 50000,
-            'adu': 80000,
-            'garage': 20000,
-            'landscaping': 5000
-        }
-        
-        # Initialize Pinecone with LangChain
+        self.sessions: Dict[str, Dict[str, Any]] = {}
+
+        # ── Shared aiohttp session ─────────────────────────────────────────
+        self.aiohttp_session: Optional[aiohttp.ClientSession] = None
+
+        # ── Pinecone vector store ──────────────────────────────────────────
         try:
             pc = PineconeClient(api_key=settings.pinecone_api_key)
-            
-            # Initialize LangChain's Pinecone vector store
             self.vector_store = PineconeVectorStore(
                 index_name=settings.pinecone_index,
                 embedding=self.embeddings,
-                pinecone_api_key=settings.pinecone_api_key
+                pinecone_api_key=settings.pinecone_api_key,
             )
-            
             print("Pinecone vector store initialized successfully")
-                
         except Exception as e:
-            print(f"Warning: Could not initialize Pinecone: {str(e)}")
+            print(f"Warning: Could not initialize Pinecone: {e}")
             self.vector_store = None
-    
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  Lightweight language detection (heuristic)
+    # ═══════════════════════════════════════════════════════════════════════
+    def detect_language(self, text: str) -> str:
+        """
+        Very simple heuristic language detector.
+        Returns "en", "es", or "fr" (default "en").
+        """
+        text = text.lower()
+
+        es_tokens = [
+            " el ", " la ", " los ", " las ", " es ", " son ", " para ", " como ",
+            " que ", " y ", " pero ", " por ", " estar "
+        ]
+        fr_tokens = [
+            " le ", " la ", " les ", " est ", " sont ", " pour ", " comme ",
+            " que ", " et ", " ou ", " mais ", " être "
+        ]
+
+        es_hits = sum(tok in text for tok in es_tokens)
+        fr_hits = sum(tok in text for tok in fr_tokens)
+
+        if es_hits > 5:
+            return "es"
+        if fr_hits > 5:
+            return "fr"
+        return "en"
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  Session helpers
+    # ═══════════════════════════════════════════════════════════════════════
     def get_or_create_session(self, session_id: str) -> Dict[str, Any]:
-        """Get or create a session with memory and context"""
         context = self.context_manager.get_or_create_context(session_id)
-        # Check if this is a new session
-        session_key = f'session_{session_id}'
-        if session_key not in self.sessions:
-            # Create memory for this session
+        key = f"session_{session_id}"
+
+        if key not in self.sessions:
             memory = ConversationSummaryBufferMemory(
                 llm=self.llm,
                 max_token_limit=500,
                 memory_key="chat_history",
                 return_messages=True,
-                output_key="answer"
+                output_key="answer",
             )
-            # Create QA chain for this session
-            qa_chain = self._create_qa_chain(memory)
-            # Store non-serializable objects in sessions dict
-            self.sessions[session_key] = {
-                'qa_chain': qa_chain,
-                'memory': memory
-            }
-            # Save context
+            qa_chain = self._create_qa_chain(memory, session_id=session_id)
+            self.sessions[key] = {"memory": memory, "qa_chain": qa_chain}
             self.context_manager.save_context(session_id, context)
+
         return {
-            'memory': self.sessions.get(f'session_{session_id}', {}).get('memory'),
-            'context': context,
-            'qa_chain': self.sessions.get(f'session_{session_id}', {}).get('qa_chain'),
-            'conversation_summary': context.conversation_summary
+            "memory": self.sessions[key]["memory"],
+            "qa_chain": self.sessions[key]["qa_chain"],
+            "context": context,
+            "conversation_summary": context.conversation_summary,
         }
-    
-    def _create_qa_chain(self, memory):
-        """Create a conversational retrieval chain with memory"""
-        # REPLACED SYSTEM TEMPLATE WITH NEW VERSION
-        system_template = """You are an expert AI construction cost advisor specializing in California residential construction, particularly in San Diego and Los Angeles.
 
-CRITICAL INSTRUCTIONS:
-1. ALWAYS maintain the context of the conversation. If discussing a specific project type (like kitchen remodel), continue with that context unless the user explicitly changes topics.
-2. Reference specific numbers and details you've already provided in the conversation.
-3. When asked follow-up questions, directly refer to your previous answers.
-4. Stay focused on the specific project type being discussed.
-5. If the user asks about timelines after discussing a kitchen remodel, give the kitchen remodel timeline, not general construction timelines.
-6. Remember and use the exact price ranges you've mentioned earlier in the conversation.
+    # ═══════════════════════════════════════════════════════════════════════
+    #  QA chain (context-aware prompt, simple retriever)
+    # ═══════════════════════════════════════════════════════════════════════
+    def _create_qa_chain(self, memory, session_id: Optional[str] = None):
+        # Fetch context to optionally append conversation summary
+        context = (
+            self.context_manager.get_or_create_context(session_id)
+            if session_id
+            else None
+        )
 
-IMPORTANT: Never ask for information that the user has already provided. If the user has already stated their budget, location, or project type, do NOT ask for it again. Instead, acknowledge what they've said and provide relevant information based on their input.
+        # 1) dynamic / fallback system prompt
+        system_template = (
+            self.context_manager.get_system_prompt(session_id)
+            if session_id
+            else (
+                "You are an expert AI construction cost advisor specializing in "
+                "California residential construction, particularly in San Diego "
+                "and Los Angeles.\n\nCRITICAL INSTRUCTIONS:\n1. ALWAYS maintain "
+                "the context of the conversation…\nAssistant: I'll respond based "
+                "on our ongoing conversation about your specific project."
+            )
+        )
 
-For San Diego specifically:
-- Permit costs typically range from $1,200-$2,500 for kitchen remodels
-- Local labor rates average $75-95/hour for skilled contractors
-- Popular materials include quartz countertops and solid wood cabinets
-- Timeline typically runs 6-8 weeks for standard kitchen remodels
-- Project costs often include a 10% contingency for unexpected issues
+        # Append summary if available
+        if context and context.conversation_summary and len(context.conversation_summary) > 5:
+            system_template += (
+                f"\n\nIMPORTANT CONTEXT: {context.conversation_summary}\n\n"
+                "Keep this conversation history in mind when responding to the user."
+            )
 
-When the user provides budget information:
-- For budgets under $25,000: Suggest stock cabinets, laminate countertops, and keeping existing layout
-- For budgets $25,000-$50,000: Suggest semi-custom cabinets, quartz countertops, and minor layout changes
-- For budgets over $50,000: Suggest custom cabinets, high-end appliances, and major layout changes
+        # 2) prompt assembly
+        chat_prompt = ChatPromptTemplate.from_messages(
+            [
+                SystemMessagePromptTemplate.from_template(system_template),
+                HumanMessagePromptTemplate.from_template(
+                    "Context from search: {context}\n\nQuestion: {question}"
+                ),
+            ]
+        )
 
-Previous conversation summary: {chat_history}
+        # 3) simple retriever (top-3)
+        retriever = self.vector_store.as_retriever(search_kwargs={"k": 3})
 
-Context from search: {context}
-
-Human: {question}
-
-CRITICAL: When asked about any previous information (like budget, location, project type), you MUST reference the specific details already discussed. Never say you don't remember or need the information again.
-
-Assistant: I'll respond based on our ongoing conversation about your specific project."""
-
-        messages = [
-            SystemMessagePromptTemplate.from_template(system_template),
-            HumanMessagePromptTemplate.from_template("{question}")
-        ]
-        
-        CHAT_PROMPT = ChatPromptTemplate.from_messages(messages)
-        
+        # 4) chain
         return ConversationalRetrievalChain.from_llm(
             llm=self.llm,
-            retriever=self.vector_store.as_retriever(search_kwargs={"k": 3}),
+            retriever=retriever,
             memory=memory,
             combine_docs_chain_kwargs={
-                "prompt": CHAT_PROMPT,
-                "document_separator": "\n"
+                "prompt": chat_prompt,
+                "document_separator": "\n",
+                "document_variable_name": "context",
             },
             return_source_documents=True,
-            verbose=False
+            verbose=False,
         )
-    
-    def is_construction_query(self, query: str) -> bool:
-        """Determine if the query is about construction/remodeling"""
-        # If we have an active session, assume follow-ups are construction-related
-        construction_keywords = [
-            'cost', 'price', 'estimate', 'remodel', 'renovation', 'kitchen', 'bathroom',
-            'project', 'construction', 'timeline', 'budget', 'appliances', 'materials',
-            'san diego', 'los angeles', 'proceed', 'first step', 'summarize'
-        ]
-        
-        query_lower = query.lower()
-        return any(keyword in query_lower for keyword in construction_keywords)
-    
-    def update_session_context(self, query: str, response: str, session_id: str):
-        """Update session context based on query and response"""
-        context = self.context_manager.get_or_create_context(session_id)
-        query_lower = query.lower()
-        response_lower = response.lower()
-        updates = {}
-        
-        # Extract location using city mappings
-        query_location = normalize_location(query_lower)
-        response_location = normalize_location(response_lower)
-        
-        # Check if user is explicitly changing location
-        if "instead" in query_lower or "what about" in query_lower or "switch to" in query_lower:
-            if query_location:
-                updates['location'] = query_location
-        elif query_location:
-            updates['location'] = query_location
-        elif response_location and not context.location:
-            updates['location'] = response_location
-        
-        # Extract project type
-        project_types = {
-            'kitchen': ['kitchen'],
-            'bathroom': ['bathroom', 'bath'],
-            'room_addition': ['room addition', 'addition'],
-            'adu': ['adu', 'accessory dwelling'],
-            'garage': ['garage']
-        }
-        for ptype, keywords in project_types.items():
-            for keyword in keywords:
-                if keyword in query_lower or keyword in response_lower:
-                    updates['project_type'] = ptype
-                    break
-        
-        # Extract price information from response
-        price_pattern = r'\$(\d{1,3}(?:,\d{3})*)'
-        prices = re.findall(price_pattern, response)
-        if prices and context.project_type:
-            if not context.discussed_prices:
-                context.discussed_prices = {}
-            context.discussed_prices[context.project_type] = prices
-            updates['discussed_prices'] = context.discussed_prices
-        
-        # Extract timeline information
-        timeline_pattern = r'(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?'
-        timeline_match = re.search(timeline_pattern, response_lower)
-        if timeline_match:
-            updates['timeline'] = f"{timeline_match.group(1)}-{timeline_match.group(2)} weeks"
-        
-        # Update conversation summary
-        summary = f"Discussing {context.project_type or 'construction'} project in {context.location or 'California'}. Budget discussed: {context.discussed_prices or {}}. Timeline: {context.timeline or 'Not discussed'}."
-        updates['conversation_summary'] = summary
-        
-        # Calculate budget range from discussed prices
-        if context.discussed_prices and context.project_type:
-            project_prices = context.discussed_prices.get(context.project_type, [])
-            if project_prices:
-                numeric_prices = []
-                for price in project_prices:
-                    try:
-                        numeric_price = int(price.replace(',', ''))
-                        numeric_prices.append(numeric_price)
-                    except:
-                        continue
-                if numeric_prices:
-                    updates['budget_range'] = {
-                        "min": min(numeric_prices),
-                        "max": max(numeric_prices)
-                    }
-        
-        # Get the context again (to ensure we have the latest)
-        context = self.context_manager.get_or_create_context(session_id)
-        # Apply updates
-        for key, value in updates.items():
-            if hasattr(context, key):
-                setattr(context, key, value)
-        
-        # Save the updated context
-        self.context_manager.save_context(session_id, context)
-    
-    async def _validate_and_correct_response(self, response_text: str, session_id: str) -> str:
-        """Validate response consistency with known context and correct if needed"""
-        context = self.context_manager.get_or_create_context(session_id)
-        
-        # Check for price consistency
-        if context.discussed_prices and context.project_type:
-            known_prices = context.discussed_prices.get(context.project_type, [])
-            if known_prices:
-                # Extract prices from response
-                response_prices = re.findall(r'\$(\d{1,3}(?:,\d{3})*)', response_text)
-                if response_prices and known_prices:
-                    # Check if response prices differ significantly from known prices
-                    response_min = min(int(p.replace(',', '')) for p in response_prices)
-                    response_max = max(int(p.replace(',', '')) for p in response_prices)
-                    known_min = min(int(p.replace(',', '')) for p in known_prices)
-                    known_max = max(int(p.replace(',', '')) for p in known_prices)
-                    # If there's a significant discrepancy, correct it
-                    if abs(response_min - known_min) > 5000 or abs(response_max - known_max) > 10000:
-                        correction_prompt = f"""
-                        The response appears inconsistent with our established budget range of 
-                        ${known_min:,} to ${known_max:,} for this {context.project_type} remodel. 
-                        Original response: {response_text}
-                        Please provide a corrected response that maintains consistency with the previously 
-                        discussed budget range while answering the user's question.
-                        """
-                        corrected = await self.llm.ainvoke(correction_prompt)
-                        return corrected.content
-        
-        # Check for timeline consistency
-        if context.timeline:
-            # Extract timeline from response
-            timeline_pattern = r'(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?'
-            response_timeline = re.search(timeline_pattern, response_text)
-            if response_timeline and context.timeline != f"{response_timeline.group(1)}-{response_timeline.group(2)} weeks":
-                correction_prompt = f"""
-                The response timeline appears inconsistent with our established timeline of {context.timeline}. 
-                Original response: {response_text}
-                Please provide a corrected response that maintains consistency with the previously 
-                discussed timeline while answering the user's question.
-                """
-                corrected = await self.llm.ainvoke(correction_prompt)
-                return corrected.content
-        
-        return response_text
 
-    async def get_chat_response(self, query: str, chat_history: List[Tuple[str, str]], session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Get response from the RAG system"""
-        logger.info(f"Getting chat response for query: {query}")
-        
-        # Ensure we have a session ID
+    # ═══════════════════════════════════════════════════════════════════════
+    #  aiohttp helpers
+    # ═══════════════════════════════════════════════════════════════════════
+    async def _get_aiohttp_session(self):
+        if self.aiohttp_session is None or self.aiohttp_session.closed:
+            self.aiohttp_session = aiohttp.ClientSession()
+        return self.aiohttp_session
+
+    async def close(self):
+        if self.aiohttp_session and not self.aiohttp_session.closed:
+            await self.aiohttp_session.close()
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  Quick query-type detector
+    # ═══════════════════════════════════════════════════════════════════════
+    def is_construction_query(self, query: str) -> bool:
+        keywords = [
+            "cost", "price", "estimate", "remodel", "renovation", "kitchen",
+            "bathroom", "project", "construction", "timeline", "budget",
+            "appliances", "materials", "san diego", "los angeles",
+            "proceed", "first step", "summarize",
+        ]
+        return any(k in query.lower() for k in keywords)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  update_session_context  (improved location + price parsing)
+    # ═══════════════════════════════════════════════════════════════════════
+    def update_session_context(self, query: str, response: str, session_id: str):
+        context = self.context_manager.get_or_create_context(session_id)
+        ql, rl = query.lower(), response.lower()
+        updates: Dict[str, Any] = {}
+
+        # ── location (user-initiated only) ────────────────────────────────
+        q_loc = normalize_location(ql)
+        if q_loc:
+            change_intent = any(term in ql for term in [
+                "moving to", "instead of", "switch to", "change to",
+                "not in", "rather than", "project in", "property in"
+            ])
+            if not context.location or change_intent:
+                print(f"DEBUG: Updating location to {q_loc} based on user query")
+                updates["location"] = q_loc
+            else:
+                print(f"DEBUG: Ignored location change to {q_loc} – no clear user intent")
+
+        # ── project type ─────────────────────────────────────────────────
+        proj_map = {
+            "kitchen": ["kitchen"],
+            "bathroom": ["bathroom", "bath"],
+            "room_addition": ["room addition", "addition"],
+            "adu": ["adu", "accessory dwelling"],
+            "garage": ["garage"],
+        }
+        for ptype, words in proj_map.items():
+            if any(w in ql or w in rl for w in words):
+                updates["project_type"] = ptype
+                break
+
+        # ── price parsing (with better single-price handling) ────────────
+        price_re = r"\$(\d{1,3}(?:,\d{3})*)"
+        price_matches = re.findall(price_re, response)
+        filtered_prices: List[str] = []
+        for p in price_matches:
+            try:
+                val = int(p.replace(",", ""))
+                if val >= 1_000:
+                    filtered_prices.append(p)
+            except ValueError:
+                continue
+
+        if filtered_prices and context.project_type:
+            # Store all valid prices
+            context.discussed_prices.setdefault(context.project_type, []).extend(filtered_prices)
+            # Deduplicate
+            context.discussed_prices[context.project_type] = list(
+                dict.fromkeys(context.discussed_prices[context.project_type])
+            )
+            updates["discussed_prices"] = context.discussed_prices
+
+            all_prices = [int(p.replace(",", "")) for p in context.discussed_prices[context.project_type]]
+
+            if len(all_prices) >= 2:
+                # ── NEW: ignore tiny outliers when max ≥ 20 000 ────────────
+                if max(all_prices) >= 20_000:
+                    thresh = max(all_prices) * 0.1
+                    all_prices = [p for p in all_prices if p >= thresh]
+                    print(f"DEBUG: Filtered out budget outliers, using {len(all_prices)} significant prices")
+
+                min_price, max_price = min(all_prices), max(all_prices)
+
+                if context.budget_range and "min" in context.budget_range:
+                    curr_min = context.budget_range["min"]
+                    curr_max = context.budget_range["max"]
+
+                    if min_price < curr_min * 0.8 or max_price > curr_max * 1.2:
+                        new_min = min(curr_min, min_price)
+                        new_max = max(curr_max, max_price)
+                        updates["budget_range"] = {"min": new_min, "max": new_max}
+                        print(f"DEBUG: Updated budget range to ${new_min:,} - ${new_max:,}")
+                else:
+                    updates["budget_range"] = {"min": min_price, "max": max_price}
+                    print(f"DEBUG: Set initial budget range to ${min_price:,} - ${max_price:,}")
+
+            elif len(all_prices) == 1 and not context.budget_range:
+                single_price = all_prices[0]
+                range_min = int(single_price * 0.85)
+                range_max = int(single_price * 1.15)
+                updates["budget_range"] = {"min": range_min, "max": range_max}
+                print(f"DEBUG: Created range from single price ${single_price:,} → ${range_min:,} - ${range_max:,}")
+
+        elif price_matches and not filtered_prices:
+            print("DEBUG: All prices < $1,000 filtered out; budget not updated")
+
+        # ── timeline (lightweight; strict check in validator) ────────────
+        tl_match = re.search(r"(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?", rl)
+        if tl_match:
+            updates["timeline"] = f"{tl_match.group(1)}-{tl_match.group(2)} weeks"
+
+        # ── update conversation summary ──────────────────────────────────
+        context.conversation_summary = self._build_conversation_summary(context)
+        updates["conversation_summary"] = context.conversation_summary
+
+        # Apply & save
+        for k, v in updates.items():
+            if hasattr(context, k):
+                setattr(context, k, v)
+        self.context_manager.save_context(session_id, context)
+
+    # ------------------------------------------------------------------ #
+    #  Helper: build summary                                             #
+    # ------------------------------------------------------------------ #
+    def _build_conversation_summary(self, context) -> str:
+        parts = []
+        if context.project_type:
+            parts.append(f"{context.project_type.capitalize()} remodel")
+        if context.location:
+            parts.append(f"in {context.location}")
+        if context.budget_range and "min" in context.budget_range and "max" in context.budget_range:
+            mn, mx = context.budget_range["min"], context.budget_range["max"]
+            parts.append(f"with budget range ${mn:,}-${mx:,}" if mn != mx else f"with budget of ${mn:,}")
+        if context.timeline:
+            parts.append(f"over {context.timeline}")
+        if context.specific_features:
+            feat = ", ".join(context.specific_features[:3])
+            if len(context.specific_features) > 3:
+                feat += f" and {len(context.specific_features)-3} more features"
+            parts.append(f"including {feat}")
+
+        if parts:
+            summary = "Discussing " + " ".join(parts) + "."
+            print(f"DEBUG: Updated conversation summary: {summary}")
+            return summary
+        return ""
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  Validation helpers  (price + timeline + price-inclusion guard)
+    # ═══════════════════════════════════════════════════════════════════════
+    async def _try_validate_correct(
+        self, response: str, session_id: str, query: str, fallback: bool = False
+    ) -> str:
+        """
+        Single-pass validator; returns either the original response
+        (if valid) or a corrected version from the LLM.
+        """
+        context = self.context_manager.get_or_create_context(session_id)
+
+        # ── price consistency ────────────────────────────────────────────
+        if context.discussed_prices and context.project_type:
+            known = context.discussed_prices.get(context.project_type, [])
+            resp_prices = re.findall(r"\$(\d{1,3}(?:,\d{3})*)", response)
+            if known and resp_prices:
+                rmn = min(int(p.replace(",", "")) for p in resp_prices)
+                rmx = max(int(p.replace(",", "")) for p in resp_prices)
+                knmn = min(int(p.replace(",", "")) for p in known)
+                knmx = max(int(p.replace(",", "")) for p in known)
+                if abs(rmn - knmn) > 5_000 or abs(rmx - knmx) > 10_000:
+                    prompt = (
+                        f"The response appears inconsistent with our established budget range "
+                        f"${knmn:,}–${knmx:,}. Original response:\n{response}\n\n"
+                        f"Please restate the answer to keep it within that budget."
+                    )
+                    return (await self.llm.ainvoke(prompt)).content
+
+        # ── timeline consistency (with replacement-only leniency) ───────
+        if context.timeline:
+            is_replacement_only = any(term in query.lower() for term in [
+                "replace countertop", "replace the countertop", "replace sink",
+                "just replace", "only replace"
+            ])
+
+            tl_match = re.search(r"(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?", response)
+            if tl_match:
+                new_min = int(tl_match.group(1))
+                new_max = int(tl_match.group(2))
+
+                curr_match = re.search(r"(\d+)-(\d+)", context.timeline)
+                if curr_match:
+                    curr_min = int(curr_match.group(1))
+                    curr_max = int(curr_match.group(2))
+
+                    min_realistic = 1 if is_replacement_only else 4
+                    if context.project_type == "kitchen" and new_min < min_realistic:
+                        prompt = (
+                            f"The timeline of {new_min}-{new_max} weeks is unrealistically short "
+                            f"for this type of project. Please revise."
+                        )
+                        return (await self.llm.ainvoke(prompt)).content
+
+                    valid = (
+                        new_min >= curr_min * 0.5
+                        and new_max <= curr_max * 2
+                    )
+                    if not valid:
+                        prompt = (
+                            f"The timeline {new_min}-{new_max} weeks conflicts with the "
+                            f"established timeline of {curr_min}-{curr_max} weeks. Please revise."
+                        )
+                        return (await self.llm.ainvoke(prompt)).content
+
+        # ── price-inclusion guard ────────────────────────────────────────
+        if any(k in query.lower() for k in ["cost", "price", "how much"]):
+            if not re.search(r"\$\d[\d,.]*", response):
+                prompt = (
+                    f"The user asked about costs, but the response contains no price information.\n\n"
+                    f"Original response:\n{response}\n\n"
+                    f"Please revise to include specific price ranges (in dollars)."
+                )
+                return (await self.llm.ainvoke(prompt)).content
+
+        return response
+
+    async def _validate_and_correct_response(
+        self, response: str, session_id: str, query: str
+    ) -> str:
+        """
+        Wraps _try_validate_correct with a single retry. Falls back to the
+        original answer if the second attempt still fails validation.
+        """
+        original = response
+
+        first_pass = await self._try_validate_correct(response, session_id, query)
+        if first_pass == response:
+            return first_pass  # valid first try
+
+        second_pass = await self._try_validate_correct(first_pass, session_id, query, fallback=True)
+        if second_pass != first_pass:
+            return second_pass  # corrected successfully
+
+        # Second attempt still invalid → fall back
+        print("DEBUG: Validation loop did not converge; returning original response")
+        return original
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  Main entry
+    # ═══════════════════════════════════════════════════════════════════════
+    async def get_chat_response(
+        self,
+        query: str,
+        chat_history: List[Tuple[str, str]],
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        logger.info(f"Incoming query: {query}")
+
         if not session_id:
             session_id = str(uuid.uuid4())
-        logger.info(f"Using session ID: {session_id}")
-        
-        # Get or create session
-        session = self.get_or_create_session(session_id)
-        context = session['context']
-        
-        # Handle greetings but keep session active
-        if not self.is_construction_query(query) and not context.project_type:
-            prompt = f"""You are a friendly AI assistant for a construction cost estimation service.
-The user said: "{query}"
+        logger.info(f"Session: {session_id}")
 
-Respond naturally and mention that you can help with construction/remodeling cost estimates for San Diego and Los Angeles.
-Keep your response conversational and brief."""
-            
-            response = await self.llm.ainvoke(prompt)
-            return {
-                "message": response.content,
-                "source_documents": []
-            }
-        
+        await self._get_aiohttp_session()
+
+        session = self.get_or_create_session(session_id)
+        context = session["context"]
+
+        # greeting / off-topic
+        if not self.is_construction_query(query) and not context.project_type:
+            friendly = (
+                f'You are a friendly RemodelAI assistant.\nUser said: "{query}"\n'
+                "Respond briefly, mentioning you can estimate remodel costs in San Diego or LA."
+            )
+            msg = (await self.llm.ainvoke(friendly)).content
+            return {"message": msg, "source_documents": []}
+
         if not self.vector_store:
             return {
-                "message": "I'm sorry, but I'm having trouble accessing the construction database. Please check back later.",
-                "source_documents": []
+                "message": "Sorry, our construction knowledge base is temporarily unavailable.",
+                "source_documents": [],
             }
-        
+
         try:
-            # Use the session's QA chain
-            qa_chain = session['qa_chain']
-            
-            # Create an enhanced query that includes critical context
-            enhanced_query = query
-            
-            # Get context prompt from context manager
-            context_prompt = self.context_manager.get_context_prompt(context)
-            if context_prompt:
-                enhanced_query = f"{context_prompt} {query}"
-            
-            logger.info(f"Enhanced query: {enhanced_query}")
-            
-            # Get response from chain
+            qa_chain = session["qa_chain"]
+
+            # ── language detection + instruction ─────────────────────────
+            user_lang = self.detect_language(query)
+            print(f"DEBUG: Detected user language: {user_lang}")
+
+            lang_instruction = {
+                "en": "Please respond in English.",
+                "es": "Por favor, responde en español.",
+                "fr": "Veuillez répondre en français.",
+            }.get(user_lang, "Please respond in English.")
+
+            # context prompt
+            ctx_prompt = self.context_manager.get_context_prompt(context)
+            enhanced_query = f"{ctx_prompt} {lang_instruction} {query}" if ctx_prompt else f"{lang_instruction} {query}"
+
+            # ── run chain ───────────────────────────────────────────────
             result = await qa_chain.ainvoke({"question": enhanced_query})
-            
-            response_text = result.get('answer', '')
-            
-            # Validate and correct response if needed
-            response_text = await self._validate_and_correct_response(response_text, session_id)
-            
-            # Use context manager's update method
-            updated_context = self.context_manager.update_context_from_exchange(
-                session_id=session_id,
-                query=query,
-                response=response_text
-            )
-            
-            # Log the updated context
-            logger.info(f"Updated context after exchange: {updated_context.to_dict()}")
-            
+
+            # ── language-aware document filtering (improved) ────────────
+            raw_docs = result.get("source_documents", [])
+            valid_docs, filtered = [], 0
+            for doc in raw_docs:
+                if not getattr(doc, "page_content", "").strip():
+                    filtered += 1
+                    continue
+                d_lang = self.detect_language(doc.page_content)
+                if d_lang in (user_lang, "en"):
+                    valid_docs.append(doc)
+                else:
+                    filtered += 1
+            if filtered:
+                print(f"DEBUG: Filtered {filtered} documents due to language/empty content")
+
+            # answer text
+            answer = result.get("answer", "")
+
+            # validate / self-correct (with fallback)
+            answer = await self._validate_and_correct_response(answer, session_id, query)
+
+            # ── enhanced boilerplate removal ───────────────────────────
+            boilerplate_patterns = [
+                r"^(Absolutely!|Certainly!|Of course!|Here's|Sure!|I'd be happy to help!)\s*",
+                r"^(Certainly!|Here’s|Sure!)\s*Here’s a revised response that aligns with your established budget.*?\.\s*-*\s*",
+                r"^(I understand you're asking about|As you mentioned,|Based on your question about|Regarding your inquiry about|When it comes to)\s*",
+                r"\s*(Feel free to ask if you need more specific recommendations|Let me know if you need any further assistance|I hope this information helps|If you have any additional questions, feel free to ask)\.*$",
+                r"\s*(It's important to note that|Keep in mind that|Please note that)\s*",
+                r"\n+### (In conclusion|Summary|Final thoughts):.+?(?=\n|\Z)",
+            ]
+            for pattern in boilerplate_patterns:
+                answer = re.sub(pattern, "", answer, flags=re.IGNORECASE | re.DOTALL)
+            answer = re.sub(r"\n{3,}", "\n\n", answer).strip()
+
+            # prefix language tag for non-English
+            if user_lang == "es":
+                answer = f"**(Respuesta en Español)**\n\n{answer}"
+            elif user_lang == "fr":
+                answer = f"**(Réponse en Français)**\n\n{answer}"
+
+            # update context
+            self.update_session_context(query, answer, session_id)
+
             return {
-                "message": response_text,
-                "source_documents": result.get('source_documents', []),
-                "session_id": session_id
+                "message": answer,
+                "source_documents": valid_docs,
+                "session_id": session_id,
             }
-            
-        except Exception as e:
-            logger.error(f"Error in get_chat_response: {str(e)}", exc_info=True)
+
+        except Exception:
+            logger.exception("get_chat_response failed")
             return {
                 "message": "I encountered an error while processing your request. Please try again.",
-                "source_documents": []
+                "source_documents": [],
             }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  Destructor – let event-loop handle session cleanup
+    # ═══════════════════════════════════════════════════════════════════════
+    def __del__(self):
+        if (
+            hasattr(self, "aiohttp_session")
+            and self.aiohttp_session
+            and not self.aiohttp_session.closed
+        ):
+            logger.info("RAGService being destroyed with unclosed aiohttp session")
