@@ -14,6 +14,11 @@ from api import chat, estimate, export
 from config import settings
 from services.rag_service import RAGService
 
+# ═════════════════════════════════════════════════════════════════════════
+#  Redis override – force in-memory storage instead of Redis
+# ═════════════════════════════════════════════════════════════════════════
+os.environ["USE_REDIS"] = "False"   # ← NEW LINE
+
 # ── logging setup ─────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

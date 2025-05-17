@@ -148,7 +148,7 @@ export default function Home() {
       // If the API returned estimate data, update the state
       if (estimateData) {
         setCostBreakdown(estimateData.costBreakdown)
-        setEstimateId(estimateData?.estimateId || "")
+        setEstimateId(estimateData?.estimateId || `temp-${Date.now()}`)
         setTimeline(estimateData.timeline)
         setConfidence(estimateData.confidence)
       }
@@ -172,11 +172,11 @@ export default function Home() {
       const accessToken = isAuthenticated ? await getAccessToken() : null
 
       // Get estimate from API
-      const { response, estimateData, estimateId } = await getEstimate(details, accessToken)
+      const { response, estimateData } = await getEstimate(details, accessToken)
 
       // Update state with estimate data
       setCostBreakdown(estimateData.costBreakdown)
-      setEstimateId(estimateData?.estimateId || "")
+      setEstimateId(estimateData?.estimateId || `temp-${Date.now()}`)
       setTimeline(estimateData.timeline)
       setConfidence(estimateData.confidence)
 
