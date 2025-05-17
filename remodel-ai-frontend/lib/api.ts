@@ -1,222 +1,259 @@
-﻿const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+﻿/* --------------------------------------------------------------------------
+   api.ts  ▸  Front-end API helper with simple response / blob caching
+--------------------------------------------------------------------------- */
 
-// Helper function to convert camelCase to snake_case
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/* ==========================================================================
+   camelCase → snake_case helpers
+============================================================================ */
 function toSnakeCase(str: string): string {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
-// Map frontend values to backend enum values
-const PROJECT_TYPE_MAP: Record<string, string> = {
-  'Kitchen Remodel': 'kitchen_remodel',
-  'Bathroom Remodel': 'bathroom_remodel',
-  'Room Addition': 'room_addition',
-  'Whole House Remodel': 'whole_house_remodel',
-  'Accessory Dwelling Unit': 'accessory_dwelling_unit',
-  'ADU': 'accessory_dwelling_unit',
-  'Landscaping': 'landscaping',
-  'Pool Installation': 'pool_installation',
-  'Garage Conversion': 'garage_conversion',
-  'Roofing': 'roofing',
-  'Flooring': 'flooring'
-};
-
-// Default square footage based on project type
-const DEFAULT_SQUARE_FOOTAGE: Record<string, number> = {
-  'kitchen_remodel': 150,
-  'bathroom_remodel': 75,
-  'room_addition': 300,
-  'whole_house_remodel': 2000,
-  'accessory_dwelling_unit': 600,
-  'landscaping': 500,
-  'pool_installation': 400,
-  'garage_conversion': 400,
-  'roofing': 1800,
-  'flooring': 1000
-};
-
-const PROPERTY_TYPE_MAP: Record<string, string> = {
-  'SFR': 'single_family',
-  'Single Family Residence': 'single_family',
-  'Single Family': 'single_family',
-  'Condo': 'condo',
-  'Townhouse': 'townhouse',
-  'Multi Family': 'multi_family',
-  'Multi-Family': 'multi_family'
-};
-
-// Helper function to convert object keys from camelCase to snake_case
 function convertKeysToSnakeCase(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(convertKeysToSnakeCase);
-  }
-  
-  if (typeof obj !== 'object') {
-    return obj;
-  }
-  
+  if (obj === null || obj === undefined) return obj;
+
+  if (Array.isArray(obj)) return obj.map(convertKeysToSnakeCase);
+
+  if (typeof obj !== "object") return obj;
+
   const converted: any = {};
   for (const key in obj) {
     const snakeKey = toSnakeCase(key);
     converted[snakeKey] = convertKeysToSnakeCase(obj[key]);
   }
-  
   return converted;
 }
 
-// Transform project details to match backend expectations
+/* ==========================================================================
+   Value maps  (frontend-label → backend enum)
+============================================================================ */
+const PROJECT_TYPE_MAP: Record<string, string> = {
+  "Kitchen Remodel": "kitchen_remodel",
+  "Bathroom Remodel": "bathroom_remodel",
+  "Room Addition": "room_addition",
+  "Whole House Remodel": "whole_house_remodel",
+  "Accessory Dwelling Unit": "accessory_dwelling_unit",
+  ADU: "accessory_dwelling_unit",
+  Landscaping: "landscaping",
+  "Pool Installation": "pool_installation",
+  "Garage Conversion": "garage_conversion",
+  Roofing: "roofing",
+  Flooring: "flooring",
+};
+
+const PROPERTY_TYPE_MAP: Record<string, string> = {
+  SFR: "single_family",
+  "Single Family Residence": "single_family",
+  "Single Family": "single_family",
+  Condo: "condo",
+  Townhouse: "townhouse",
+  "Multi Family": "multi_family",
+  "Multi-Family": "multi_family",
+};
+
+/* Default sq-ft if user leaves it blank */
+const DEFAULT_SQUARE_FOOTAGE: Record<string, number> = {
+  kitchen_remodel: 150,
+  bathroom_remodel: 75,
+  room_addition: 300,
+  whole_house_remodel: 2000,
+  accessory_dwelling_unit: 600,
+  landscaping: 500,
+  pool_installation: 400,
+  garage_conversion: 400,
+  roofing: 1800,
+  flooring: 1000,
+};
+
+/* ==========================================================================
+   Tiny 1-hour client-side cache   (FIFO eviction optional)
+============================================================================ */
+const apiCache: Record<
+  string,
+  { data?: any; blob?: Blob; timestamp: number }
+> = {};
+const CACHE_EXPIRY = 60 * 60 * 1000; // 1 h
+
+function getCachedData(key: string) {
+  const entry = apiCache[key];
+  return entry && Date.now() - entry.timestamp < CACHE_EXPIRY ? entry.data : null;
+}
+
+function setCachedData(key: string, data: any) {
+  apiCache[key] = { data, timestamp: Date.now() };
+}
+
+function getCachedBlob(key: string) {
+  const entry = apiCache[key];
+  return entry && entry.blob && Date.now() - entry.timestamp < CACHE_EXPIRY
+    ? entry.blob
+    : null;
+}
+
+function setCachedBlob(key: string, blob: Blob) {
+  apiCache[key] = { blob, timestamp: Date.now() };
+}
+
+/* ==========================================================================
+   Request-payload transformer  (UI ➜ backend)
+============================================================================ */
 function transformProjectDetails(details: any): any {
   const transformed = convertKeysToSnakeCase(details);
-  
-  // Map project type - use the original value from the form, not the snake_case version
+
+  // project_type
   if (details.projectType) {
-    transformed.project_type = PROJECT_TYPE_MAP[details.projectType] || details.projectType.toLowerCase().replace(/ /g, '_');
+    transformed.project_type =
+      PROJECT_TYPE_MAP[details.projectType] ||
+      details.projectType.toLowerCase().replace(/ /g, "_");
   }
-  
-  // Map property type - use the original value from the form
+
+  // property_type
   if (details.propertyType) {
-    transformed.property_type = PROPERTY_TYPE_MAP[details.propertyType] || details.propertyType.toLowerCase().replace(/ /g, '_');
+    transformed.property_type =
+      PROPERTY_TYPE_MAP[details.propertyType] ||
+      details.propertyType.toLowerCase().replace(/ /g, "_");
   }
-  
-  // Ensure square_footage is a valid number with smart defaults
+
+  /* ---------- square_footage ---------- */
   if (transformed.square_footage !== undefined) {
-    const squareFootage = parseFloat(transformed.square_footage) || 0;
-    if (squareFootage <= 0) {
-      // Use project-specific default
-      transformed.square_footage = DEFAULT_SQUARE_FOOTAGE[transformed.project_type] || 200;
-    } else {
-      transformed.square_footage = squareFootage;
-    }
+    const sqft = parseFloat(transformed.square_footage) || 0;
+    transformed.square_footage =
+      sqft > 0
+        ? sqft
+        : DEFAULT_SQUARE_FOOTAGE[transformed.project_type] || 200;
   } else {
-    // If no square footage provided, use default based on project type
-    transformed.square_footage = DEFAULT_SQUARE_FOOTAGE[transformed.project_type] || 200;
+    transformed.square_footage =
+      DEFAULT_SQUARE_FOOTAGE[transformed.project_type] || 200;
   }
-  
-  // Ensure state is uppercase
-  if (transformed.state) {
-    transformed.state = transformed.state.toUpperCase();
-  }
-  
-  // Remove empty optional fields
-  if (!transformed.additional_details) {
-    delete transformed.additional_details;
-  }
-  
-  if (!transformed.address) {
-    delete transformed.address;
-  }
-  
+
+  // state → uppercase
+  if (transformed.state) transformed.state = transformed.state.toUpperCase();
+
+  // prune empty optional fields
+  if (!transformed.additional_details) delete transformed.additional_details;
+  if (!transformed.address) delete transformed.address;
+
   return transformed;
 }
 
-// The main API object
+/* ==========================================================================
+   Core API wrapper  (chat • estimate • exportPDF)  with caching
+============================================================================ */
 const api = {
+  /* --------------------------------------------------------------------- */
   async chat(message: string, sessionId?: string) {
-    const response = await fetch(`/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    const lower = message.toLowerCase();
+    const dynamic =
+      lower.includes("cost") ||
+      lower.includes("estimate") ||
+      lower.includes("price") ||
+      lower.includes("timeline");
+
+    const cacheKey = `chat:${sessionId || ""}:${message}`;
+
+    if (!dynamic) {
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+    }
+
+    const resp = await fetch(`/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content: message,
-        role: 'user',
-        session_id: sessionId
+        role: "user",
+        session_id: sessionId,
       }),
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Chat request failed: ${error}`);
+    if (!resp.ok) {
+      throw new Error(`Chat request failed: ${await resp.text()}`);
     }
 
-    return response.json();
+    const data = await resp.json();
+    if (!dynamic) setCachedData(cacheKey, data);
+    return data;
   },
 
+  /* --------------------------------------------------------------------- */
   async createEstimate(projectDetails: any) {
-    // Transform the details to match backend expectations
-    const transformedDetails = transformProjectDetails(projectDetails);
-    console.log('Sending to backend:', transformedDetails); // Debug log
-    
-    const response = await fetch(`/api/estimate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ project_details: transformedDetails }),
+    const transformed = transformProjectDetails(projectDetails);
+    console.log("Sending to backend:", transformed);
+
+    const resp = await fetch(`/api/estimate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_details: transformed }),
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Estimate creation failed: ${error}`);
+    if (!resp.ok) {
+      throw new Error(`Estimate creation failed: ${await resp.text()}`);
     }
-
-    return response.json();
+    return resp.json();
   },
 
+  /* --------------------------------------------------------------------- */
   async exportPDF(estimateId: string) {
-    const response = await fetch(`/api/export`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        estimate_id: estimateId,
-        format: 'pdf'
-      }),
+    const cacheKey = `pdf:${estimateId}`;
+    const cachedBlob = getCachedBlob(cacheKey);
+    if (cachedBlob) return cachedBlob;
+
+    const resp = await fetch(`/api/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estimate_id: estimateId, format: "pdf" }),
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`PDF export failed: ${error}`);
+    if (!resp.ok) {
+      throw new Error(`PDF export failed: ${await resp.text()}`);
     }
 
-    const result = await response.json();
-    
-    // Check if we have a URL or base64 data
+    const result = await resp.json();
+    let pdfBlob: Blob;
+
     if (result.file_url) {
-      // Download from URL
-      const downloadResponse = await fetch(`${API_BASE_URL}${result.file_url}`);
-      if (!downloadResponse.ok) {
-        throw new Error('Failed to download PDF');
-      }
-      return downloadResponse.blob();
+      const dl = await fetch(`${API_BASE_URL}${result.file_url}`);
+      if (!dl.ok) throw new Error("Failed to download PDF");
+      pdfBlob = await dl.blob();
     } else if (result.content) {
-      // Convert base64 to blob
-      const base64Data = result.content.split(',')[1] || result.content;
-      const binaryData = atob(base64Data);
-      const bytes = new Uint8Array(binaryData.length);
-      for (let i = 0; i < binaryData.length; i++) {
-        bytes[i] = binaryData.charCodeAt(i);
-      }
-      return new Blob([bytes], { type: 'application/pdf' });
+      // base64 → blob
+      const b64 = (result.content.split(",")[1] || result.content).trim();
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      pdfBlob = new Blob([bytes], { type: "application/pdf" });
     } else {
-      throw new Error('No PDF content received');
+      throw new Error("No PDF content received");
     }
-  }
+
+    setCachedBlob(cacheKey, pdfBlob);
+    return pdfBlob;
+  },
 };
 
-// High-level API functions for the frontend
+/* ==========================================================================
+   High-level helpers consumed by the React app
+============================================================================ */
 export async function sendMessage(
   message: string,
   projectDetails?: any,
   accessToken?: string | null,
   sessionId?: string
 ): Promise<{
-  response: string
-  estimateData?: any
-  estimateId?: string
-  sessionId: string
+  response: string;
+  estimateData?: any;
+  estimateId?: string;
+  sessionId: string;
 }> {
-  const result = await api.chat(message, sessionId);
-  
+  const res = await api.chat(message, sessionId);
   return {
-    response: result.message,
-    estimateData: result.estimate_data,
-    estimateId: result.estimate_id,
-    sessionId: result.session_id
+    response: res.message,
+    estimateData: res.estimate_data,
+    estimateId: res.estimate_id,
+    sessionId: res.session_id,
   };
 }
 
@@ -224,35 +261,31 @@ export async function getEstimate(
   details: any,
   accessToken?: string | null
 ): Promise<{
-  response: string
-  estimateData: any
-  estimateId: string
+  response: string;
+  estimateData: any;
+  estimateId: string;
 }> {
-  const result = await api.createEstimate(details);
-  
-  // The backend returns the full estimate response
-  // We need to format it for the frontend
+  const res = await api.createEstimate(details);
   return {
     response: "Estimate created successfully",
     estimateData: {
       costBreakdown: {
-        total: result.total_cost,
-        labor: result.cost_breakdown?.labor || 0,
-        materials: result.cost_breakdown?.materials || 0,
-        permits: result.cost_breakdown?.permits || 0,
-        other: result.cost_breakdown?.other || 0
+        total: res.total_cost,
+        labor: res.cost_breakdown?.labor || 0,
+        materials: res.cost_breakdown?.materials || 0,
+        permits: res.cost_breakdown?.permits || 0,
+        other: res.cost_breakdown?.other || 0,
       },
-      timeline: `${result.timeline?.total_days || 0} days`,
-      confidence: result.confidence_score || 0.85
+      timeline: `${res.timeline?.total_days || 0} days`,
+      confidence: res.confidence_score || 0.85,
     },
-    estimateId: result.estimate_id
+    estimateId: res.estimate_id,
   };
 }
 
 export async function exportEstimatePDF(estimateId: string): Promise<Blob> {
-  // Just call the api.exportPDF method which already returns a blob
   return api.exportPDF(estimateId);
 }
 
-// Export the api object as default
+/* Default export (low-level API) */
 export default api;
