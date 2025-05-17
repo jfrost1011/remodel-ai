@@ -55,19 +55,31 @@ export function ChatInterface({
   }, [messages])
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-10rem)] border rounded-lg overflow-hidden bg-white">
+    <div
+      className="flex-1 flex flex-col min-h-[500px] h-[70vh] sm:h-[500px] md:h-[calc(100vh-10rem)] border rounded-lg overflow-hidden bg-white"
+    >
       <div className="p-4 border-b">
         <h1 className="text-2xl font-bold">Construction Estimator</h1>
-        <p className="text-muted-foreground">Get AI-powered estimates for your remodeling project</p>
+        <p className="text-muted-foreground">
+          Get AI-powered estimates for your remodeling project
+        </p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
-          <div key={message.id} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
+          <div
+            key={message.id}
+            className={cn(
+              "flex",
+              message.role === "user" ? "justify-end" : "justify-start"
+            )}
+          >
             <div
               className={cn(
                 "max-w-[80%] rounded-lg p-3",
-                message.role === "user" ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-800",
+                message.role === "user"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-gray-100 text-gray-800"
               )}
             >
               {message.content.split("\n").map((line, i) => (
@@ -122,7 +134,11 @@ export function ChatInterface({
             style={{ backgroundColor: "#10B981" }}
             disabled={isLoading || isSending || !input.trim()}
           >
-            {isSending ? <LoadingIndicator size="sm" /> : <Send className="h-4 w-4" />}
+            {isSending ? (
+              <LoadingIndicator size="sm" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
           <Button
             type="button"
