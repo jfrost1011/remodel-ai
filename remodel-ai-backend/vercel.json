@@ -1,0 +1,30 @@
+{
+    "version": 2,
+    "routes": [
+      {
+        "src": "/api/v1/health",
+        "dest": "/api/v1/health",
+        "headers": {
+          "Cache-Control": "public, max-age=3600, s-maxage=3600"
+        }
+      },
+      {
+        "src": "/api/v1/chat",
+        "dest": "/api/v1/chat"
+      },
+      {
+        "src": "/api/v1/estimate",
+        "dest": "/api/v1/estimate"
+      },
+      {
+        "src": "/api/v1/export",
+        "dest": "/api/v1/export"
+      }
+    ],
+    "functions": {
+      "api/**/*.py": {
+        "memory": 1024,
+        "maxDuration": 10
+      }
+    }
+  }

@@ -1,13 +1,18 @@
 ﻿# main.py
 # ───────────────────────────────────────────────────────────────────────────
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
 import logging
-import gc            # used for graceful shutdown
+import gc                     # graceful shutdown
 import os
-import asyncio       # needed for final task-cancellation sweep
+import sys                    # for cache-middleware path tweak
+import asyncio                # final task-cancellation sweep
+
+# ensure current directory is resolvable by middleware import
+sys.path.append('.')
+from middleware.cache import CacheMiddleware
 
 # Internal routers / services
 from api import chat, estimate, export
@@ -47,7 +52,7 @@ app = FastAPI(
 )
 
 # ═════════════════════════════════════════════════════════════════════════
-#  CORS
+#  Middleware
 # ═════════════════════════════════════════════════════════════════════════
 allowed_origins = [
     "https://remodel-ai.vercel.app",
@@ -64,6 +69,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# ‣ cache layer (simple in-memory HTTP cache)
+app.add_middleware(CacheMiddleware)
 
 # ═════════════════════════════════════════════════════════════════════════
 #  Request-logging middleware
@@ -119,21 +127,26 @@ async def shutdown_event():
 # ═════════════════════════════════════════════════════════════════════════
 #  Routers
 # ═════════════════════════════════════════════════════════════════════════
-app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
+app.include_router(chat.router,     prefix="/api/v1/chat",     tags=["chat"])
 app.include_router(estimate.router, prefix="/api/v1/estimate", tags=["estimate"])
-app.include_router(export.router, prefix="/api/v1/export", tags=["export"])
+app.include_router(export.router,   prefix="/api/v1/export",   tags=["export"])
 
 # ═════════════════════════════════════════════════════════════════════════
-#  Basic endpoints
+#  Basic endpoints  (now with cache-control)
 # ═════════════════════════════════════════════════════════════════════════
 @app.get("/")
-async def root():
+async def root(response: Response):
     logger.info("Root endpoint accessed")
+    # Cache root for 1 hour
+    response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=3600"
     return {"message": "RemodelAI API is running"}
 
+
 @app.get("/api/v1/health")
-async def health_check():
+async def health_check(response: Response):
     logger.info("Health check accessed")
+    # Cache health check for 1 hour
+    response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=3600"
     return {"status": "healthy", "environment": settings.environment}
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -158,6 +171,7 @@ async def debug_pinecone():
             "error_type": type(e).__name__,
             "traceback": traceback.format_exc(),
         }
+
 
 @app.post("/api/v1/debug/search")
 async def debug_search(location: str, project_type: str):
@@ -201,7 +215,7 @@ async def debug_search(location: str, project_type: str):
             "traceback": traceback.format_exc(),
         }
 
-# ── entrypoint when run directly ──────────────────────────────────────────
+# ── entry-point when run directly ─────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(settings.port))

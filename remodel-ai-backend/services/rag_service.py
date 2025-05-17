@@ -25,15 +25,51 @@ from services.city_mappings import normalize_location
 
 logger = logging.getLogger(__name__)
 
+# ───────────────────────────────────────────────────────────────────────────
+#  SIMPLE SINGLETON SUPPORT
+# ───────────────────────────────────────────────────────────────────────────
+_instance: "RAGService | None" = None  # module-level handle (debug only)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  RAGService
 # ═══════════════════════════════════════════════════════════════════════════
 class RAGService:
+    """
+    Retrieval-Augmented Generation service with:
+
+      • LangChain ConversationalRetrievalChain
+      • Pinecone vector store
+      • Context + memory handling
+
+    Implemented as a **singleton** so we initialise expensive
+    resources (LLM, embeddings, Pinecone, etc.) only once per process.
+    """
+
+    _instance: "RAGService | None" = None  # class-level handle
+
+    # ────────────────────────────────────────────────────────────────────
+    #  Singleton plumbing
+    # ────────────────────────────────────────────────────────────────────
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            print("Creating new RAGService instance")
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False         # flag for __init__
+        return cls._instance
+
+    # ────────────────────────────────────────────────────────────────────
+    #  Real initialisation (runs only once)
+    # ────────────────────────────────────────────────────────────────────
     def __init__(self):
+        # Skip heavy init if we've already run it
+        if getattr(self, "_initialized", False):
+            print("Using existing RAGService instance")
+            return
+
         print("Initializing RAG Service…")
 
-        # ── LLM & embeddings ───────────────────────────────────────────────
+        # ── LLM & embeddings ────────────────────────────────────────────
         self.llm = ChatOpenAI(
             openai_api_key=settings.openai_api_key,
             model_name=settings.openai_model,
@@ -44,14 +80,14 @@ class RAGService:
             model=settings.embedding_model,
         )
 
-        # ── Context manager & session store ────────────────────────────────
+        # ── Context manager & session store ─────────────────────────────
         self.context_manager = ContextManager()
         self.sessions: Dict[str, Dict[str, Any]] = {}
 
-        # ── Shared aiohttp session ─────────────────────────────────────────
+        # ── Shared aiohttp session ──────────────────────────────────────
         self.aiohttp_session: Optional[aiohttp.ClientSession] = None
 
-        # ── Pinecone vector store ──────────────────────────────────────────
+        # ── Pinecone vector store ───────────────────────────────────────
         try:
             pc = PineconeClient(api_key=settings.pinecone_api_key)
             self.vector_store = PineconeVectorStore(
@@ -64,9 +100,12 @@ class RAGService:
             print(f"Warning: Could not initialize Pinecone: {e}")
             self.vector_store = None
 
-    # ═══════════════════════════════════════════════════════════════════════
+        # Mark the singleton as fully initialised
+        self._initialized = True
+
+    # ═══════════════════════════════════════════════════════════════════
     #  Lightweight language detection (heuristic)
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     def detect_language(self, text: str) -> str:
         """
         Very simple heuristic language detector.
@@ -92,9 +131,9 @@ class RAGService:
             return "fr"
         return "en"
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  Session helpers
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     def get_or_create_session(self, session_id: str) -> Dict[str, Any]:
         context = self.context_manager.get_or_create_context(session_id)
         key = f"session_{session_id}"
@@ -118,9 +157,9 @@ class RAGService:
             "conversation_summary": context.conversation_summary,
         }
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  QA chain (context-aware prompt, simple retriever)
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     def _create_qa_chain(self, memory, session_id: Optional[str] = None):
         # Fetch context to optionally append conversation summary
         context = (
@@ -176,9 +215,9 @@ class RAGService:
             verbose=False,
         )
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  aiohttp helpers
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     async def _get_aiohttp_session(self):
         if self.aiohttp_session is None or self.aiohttp_session.closed:
             self.aiohttp_session = aiohttp.ClientSession()
@@ -188,9 +227,9 @@ class RAGService:
         if self.aiohttp_session and not self.aiohttp_session.closed:
             await self.aiohttp_session.close()
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  Quick query-type detector
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     def is_construction_query(self, query: str) -> bool:
         keywords = [
             "cost", "price", "estimate", "remodel", "renovation", "kitchen",
@@ -200,15 +239,16 @@ class RAGService:
         ]
         return any(k in query.lower() for k in keywords)
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  update_session_context  (improved location + price parsing)
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     def update_session_context(self, query: str, response: str, session_id: str):
+        # -------------- (contents unchanged from your original file) --------------
         context = self.context_manager.get_or_create_context(session_id)
         ql, rl = query.lower(), response.lower()
         updates: Dict[str, Any] = {}
 
-        # ── location (user-initiated only) ────────────────────────────────
+        # ── location (user-initiated only) ──────────────────────────────
         q_loc = normalize_location(ql)
         if q_loc:
             change_intent = any(term in ql for term in [
@@ -221,7 +261,7 @@ class RAGService:
             else:
                 print(f"DEBUG: Ignored location change to {q_loc} – no clear user intent")
 
-        # ── project type ─────────────────────────────────────────────────
+        # ── project type ────────────────────────────────────────────────
         proj_map = {
             "kitchen": ["kitchen"],
             "bathroom": ["bathroom", "bath"],
@@ -234,7 +274,7 @@ class RAGService:
                 updates["project_type"] = ptype
                 break
 
-        # ── price parsing (with better single-price handling) ────────────
+        # ── price parsing (≥ $1 000) ────────────────────────────────────
         price_re = r"\$(\d{1,3}(?:,\d{3})*)"
         price_matches = re.findall(price_re, response)
         filtered_prices: List[str] = []
@@ -247,9 +287,7 @@ class RAGService:
                 continue
 
         if filtered_prices and context.project_type:
-            # Store all valid prices
             context.discussed_prices.setdefault(context.project_type, []).extend(filtered_prices)
-            # Deduplicate
             context.discussed_prices[context.project_type] = list(
                 dict.fromkeys(context.discussed_prices[context.project_type])
             )
@@ -258,7 +296,6 @@ class RAGService:
             all_prices = [int(p.replace(",", "")) for p in context.discussed_prices[context.project_type]]
 
             if len(all_prices) >= 2:
-                # ── NEW: ignore tiny outliers when max ≥ 20 000 ────────────
                 if max(all_prices) >= 20_000:
                     thresh = max(all_prices) * 0.1
                     all_prices = [p for p in all_prices if p >= thresh]
@@ -289,12 +326,12 @@ class RAGService:
         elif price_matches and not filtered_prices:
             print("DEBUG: All prices < $1,000 filtered out; budget not updated")
 
-        # ── timeline (lightweight; strict check in validator) ────────────
+        # ── timeline (lightweight) ───────────────────────────────────────
         tl_match = re.search(r"(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?", rl)
         if tl_match:
             updates["timeline"] = f"{tl_match.group(1)}-{tl_match.group(2)} weeks"
 
-        # ── update conversation summary ──────────────────────────────────
+        # ── update conversation summary ─────────────────────────────────
         context.conversation_summary = self._build_conversation_summary(context)
         updates["conversation_summary"] = context.conversation_summary
 
@@ -304,9 +341,9 @@ class RAGService:
                 setattr(context, k, v)
         self.context_manager.save_context(session_id, context)
 
-    # ------------------------------------------------------------------ #
-    #  Helper: build summary                                             #
-    # ------------------------------------------------------------------ #
+    # -------------------------------------------------------------------
+    #  Helper: build summary
+    # -------------------------------------------------------------------
     def _build_conversation_summary(self, context) -> str:
         parts = []
         if context.project_type:
@@ -330,9 +367,9 @@ class RAGService:
             return summary
         return ""
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  Validation helpers  (price + timeline + price-inclusion guard)
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     async def _try_validate_correct(
         self, response: str, session_id: str, query: str, fallback: bool = False
     ) -> str:
@@ -342,7 +379,7 @@ class RAGService:
         """
         context = self.context_manager.get_or_create_context(session_id)
 
-        # ── price consistency ────────────────────────────────────────────
+        # ── price consistency ──────────────────────────────────────────
         if context.discussed_prices and context.project_type:
             known = context.discussed_prices.get(context.project_type, [])
             resp_prices = re.findall(r"\$(\d{1,3}(?:,\d{3})*)", response)
@@ -359,7 +396,7 @@ class RAGService:
                     )
                     return (await self.llm.ainvoke(prompt)).content
 
-        # ── timeline consistency (with replacement-only leniency) ───────
+        # ── timeline consistency (with replacement-only leniency) ──────
         if context.timeline:
             is_replacement_only = any(term in query.lower() for term in [
                 "replace countertop", "replace the countertop", "replace sink",
@@ -395,7 +432,7 @@ class RAGService:
                         )
                         return (await self.llm.ainvoke(prompt)).content
 
-        # ── price-inclusion guard ────────────────────────────────────────
+        # ── price-inclusion guard ───────────────────────────────────────
         if any(k in query.lower() for k in ["cost", "price", "how much"]):
             if not re.search(r"\$\d[\d,.]*", response):
                 prompt = (
@@ -428,9 +465,9 @@ class RAGService:
         print("DEBUG: Validation loop did not converge; returning original response")
         return original
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  Main entry
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     async def get_chat_response(
         self,
         query: str,
@@ -466,7 +503,7 @@ class RAGService:
         try:
             qa_chain = session["qa_chain"]
 
-            # ── language detection + instruction ─────────────────────────
+            # ── language detection + instruction ────────────────────────
             user_lang = self.detect_language(query)
             print(f"DEBUG: Detected user language: {user_lang}")
 
@@ -478,12 +515,15 @@ class RAGService:
 
             # context prompt
             ctx_prompt = self.context_manager.get_context_prompt(context)
-            enhanced_query = f"{ctx_prompt} {lang_instruction} {query}" if ctx_prompt else f"{lang_instruction} {query}"
+            enhanced_query = (
+                f"{ctx_prompt} {lang_instruction} {query}"
+                if ctx_prompt else f"{lang_instruction} {query}"
+            )
 
             # ── run chain ───────────────────────────────────────────────
             result = await qa_chain.ainvoke({"question": enhanced_query})
 
-            # ── language-aware document filtering (improved) ────────────
+            # ── language-aware document filtering (improved) ───────────
             raw_docs = result.get("source_documents", [])
             valid_docs, filtered = [], 0
             for doc in raw_docs:
@@ -539,9 +579,9 @@ class RAGService:
                 "source_documents": [],
             }
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     #  Destructor – let event-loop handle session cleanup
-    # ═══════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
     def __del__(self):
         if (
             hasattr(self, "aiohttp_session")
