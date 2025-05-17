@@ -6,8 +6,10 @@ import logging
 import re
 
 from config import settings
+from services.city_mappings import normalize_location   # ⬅️ NEW
 
 logger = logging.getLogger(__name__)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  ConversationContext dataclass-style container
@@ -19,7 +21,7 @@ class ConversationContext:
         self.session_id: str = ""
         self.location: Optional[str] = None
         self.project_type: Optional[str] = None
-        self.budget_range: Dict[str, int] = {}            # {"min": 25000, "max": 50000}
+        self.budget_range: Dict[str, int] = {}            # {"min": 25_000, "max": 50_000}
         self.timeline: Optional[str] = None               # "6-8 weeks"
         self.discussed_prices: Dict[str, List[str]] = {}  # {"kitchen": ["25,000","50,000"]}
         self.specific_features: List[str] = []
@@ -28,20 +30,20 @@ class ConversationContext:
         self.turn_count: int = 0
         self.metadata: Dict[str, Any] = {}
 
-    # serialization helpers ----------------------------------------------------
+    # ─── serialization helpers ────────────────────────────────────────────────
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "session_id":          self.session_id,
-            "location":            self.location,
-            "project_type":        self.project_type,
-            "budget_range":        self.budget_range,
-            "timeline":            self.timeline,
-            "discussed_prices":    self.discussed_prices,
-            "specific_features":   self.specific_features,
+            "session_id":           self.session_id,
+            "location":             self.location,
+            "project_type":         self.project_type,
+            "budget_range":         self.budget_range,
+            "timeline":             self.timeline,
+            "discussed_prices":     self.discussed_prices,
+            "specific_features":    self.specific_features,
             "conversation_summary": self.conversation_summary,
-            "last_updated":        self.last_updated.isoformat(),
-            "turn_count":          self.turn_count,
-            "metadata":            self.metadata,
+            "last_updated":         self.last_updated.isoformat(),
+            "turn_count":           self.turn_count,
+            "metadata":             self.metadata,
         }
 
     def from_dict(self, data: Dict[str, Any]):
@@ -70,14 +72,17 @@ class ContextManager:
     def __init__(self):
         try:
             self.redis_client = settings.get_redis_connection()
-            self.redis_client.ping()
-            logger.info("Redis connection established")
-            print("DEBUG: ContextManager - Redis connection established")
+            if self.redis_client:
+                self.redis_client.ping()
+                logger.info("Redis connection established")
+                print("DEBUG: ContextManager – Redis connection established")
         except Exception as e:
             logger.error(f"Redis connection failed: {e}")
-            print(f"DEBUG: ContextManager - Redis connection failed: {e}")
+            print(f"DEBUG: ContextManager – Redis connection failed: {e}")
             self.redis_client = None
-            self.memory_store: Dict[str, Dict[str, Any]] = {}
+
+        # In-memory fallback store
+        self.memory_store: Dict[str, Dict[str, Any]] = {}
 
     # ─── load / save helpers ──────────────────────────────────────────────
     def get_or_create_context(self, session_id: str) -> ConversationContext:
@@ -133,47 +138,62 @@ class ContextManager:
         q_lower = query.lower()
         r_lower = response.lower()
 
-        # ---- location extraction (intent-aware) --------------------------
-        new_location = None
+        # ------------------------------------------------------------------
+        #  LOCATION EXTRACTION  (now uses normalize_location)
+        # ------------------------------------------------------------------
+        new_location: Optional[str] = None
 
-        # 1) explicit user mention
-        if "san diego" in q_lower:
-            new_location = "San Diego"
-            print("DEBUG: User mentioned San Diego")
-        elif "los angeles" in q_lower or (" la " in q_lower and "los angeles" not in q_lower):
-            new_location = "Los Angeles"
-            print("DEBUG: User mentioned Los Angeles")
+        # 1️⃣  Try the city-mapping utility on the raw query first
+        mapped_q = normalize_location(query)
+        if mapped_q:
+            new_location = mapped_q
+            print(f"DEBUG: normalize_location matched '{mapped_q}' from user query")
 
-        # 2) assistant mention only for first-time setting
-        if not new_location and not context.location:
-            if "san diego" in r_lower:
+        # 2️⃣  If nothing yet, try direct substrings for quick hits
+        if not new_location:
+            if "san diego" in q_lower:
                 new_location = "San Diego"
-                print("DEBUG: Response mentioned San Diego (initial setting)")
+                print("DEBUG: User explicitly mentioned San Diego")
+            elif "los angeles" in q_lower or (" la " in q_lower and "los angeles" not in q_lower):
+                new_location = "Los Angeles"
+                print("DEBUG: User explicitly mentioned Los Angeles")
+
+        # 3️⃣  If still unset and we have no stored location, inspect assistant response
+        if not new_location and not context.location:
+            mapped_r = normalize_location(response)
+            if mapped_r:
+                new_location = mapped_r
+                print(f"DEBUG: normalize_location matched '{mapped_r}' from assistant response")
+            elif "san diego" in r_lower:
+                new_location = "San Diego"
+                print("DEBUG: Assistant mentioned San Diego (initial setting)")
             elif "los angeles" in r_lower:
                 new_location = "Los Angeles"
-                print("DEBUG: Response mentioned Los Angeles (initial setting)")
+                print("DEBUG: Assistant mentioned Los Angeles (initial setting)")
 
-        # 3) apply rules
+        # 4️⃣  Apply switch / initial-set logic
         if new_location and context.location:
             switch_intent = any(
-                kw in q_lower for kw in ["instead", "switch", "what about", "how about", "change to"]
+                kw in q_lower for kw in ["instead", "switch", "what about", "how about", "change to", "not in"]
             )
             if switch_intent and new_location != context.location:
-                print(f"DEBUG: User requested to switch location from {context.location} to {new_location}")
+                print(f"DEBUG: Switching location from {context.location} → {new_location}")
                 context.location = new_location
             else:
-                print(f"DEBUG: Ignoring location {new_location}; user did not request a switch")
+                print(f"DEBUG: Ignoring '{new_location}'; no explicit switch intent")
         elif new_location and not context.location:
             context.location = new_location
             print(f"DEBUG: Setting initial location to {new_location}")
 
-        # ---- project type -----------------------------------------------
+        # ------------------------------------------------------------------
+        #  PROJECT-TYPE DETECTION
+        # ------------------------------------------------------------------
         project_map = {
-            "kitchen": ["kitchen"],
-            "bathroom": ["bathroom", "bath"],
-            "room_addition": ["room addition", "addition"],
-            "adu": ["adu", "accessory dwelling"],
-            "garage": ["garage"],
+            "kitchen":        ["kitchen"],
+            "bathroom":       ["bathroom", "bath"],
+            "room_addition":  ["room addition", "addition"],
+            "adu":            ["adu", "accessory dwelling"],
+            "garage":         ["garage"],
         }
         for ptype, words in project_map.items():
             if any(w in q_lower or w in r_lower for w in words):
@@ -181,71 +201,51 @@ class ContextManager:
                 print(f"DEBUG: Found project type: {ptype}")
                 break
 
-        # ---- price extraction (≥$1 000, ignore $/sq ft) ------------------
+        # ------------------------------------------------------------------
+        #  PRICE PARSING  (≥ $1,000, skip $/sqft)
+        # ------------------------------------------------------------------
         price_pat = r"\$(\d{1,3}(?:,\d{3})*)"
         prices = re.findall(price_pat, response)
-
         is_sqft_context = any(tag in r_lower for tag in ["per square", "per sq", "/sq"])
 
-        filtered_prices, sqft_prices = [], []
+        filtered_prices: List[str] = []
         for p in prices:
             try:
                 val = int(p.replace(",", ""))
-                if val >= 1000:
+                if val >= 1_000 and not is_sqft_context:
                     filtered_prices.append(p)
-                elif is_sqft_context:
-                    sqft_prices.append(p)
             except ValueError:
                 continue
 
         if filtered_prices and context.project_type:
-            print(f"DEBUG: Found filtered prices: {filtered_prices}")
             context.discussed_prices[context.project_type] = filtered_prices
-
-            if len(filtered_prices) >= 2:
-                nums = [int(p.replace(",", "")) for p in filtered_prices]
-                context.budget_range = {"min": min(nums), "max": max(nums)}
-                print(f"DEBUG: Set budget range: {context.budget_range}")
-            elif len(filtered_prices) == 1:
-                single_val = int(filtered_prices[0].replace(",", ""))
-                context.budget_range = {"min": single_val, "max": single_val}
-                print(f"DEBUG: Set single-price budget: {context.budget_range}")
+            nums = [int(p.replace(",", "")) for p in filtered_prices]
+            context.budget_range = {"min": min(nums), "max": max(nums)}
+            print(f"DEBUG: Updated budget range: {context.budget_range}")
         elif not filtered_prices:
-            print("DEBUG: No valid prices ≥$1 000 found; budget unchanged")
+            print("DEBUG: No valid prices ≥ $1,000 found; budget unchanged")
 
-        # ---- timeline extraction (reasonableness check) ------------------
+        # ------------------------------------------------------------------
+        #  TIMELINE DETECTION  (simple heuristic)
+        # ------------------------------------------------------------------
         tl_match = re.search(r"(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?", r_lower)
         if tl_match:
-            new_tl = f"{tl_match.group(1)}-{tl_match.group(2)} weeks"
+            context.timeline = f"{tl_match.group(1)}-{tl_match.group(2)} weeks"
+            print(f"DEBUG: Timeline set to {context.timeline}")
 
-            if context.timeline:
-                old = re.search(r"(\d+)-(\d+)", context.timeline)
-                if old:
-                    old_min, old_max = int(old.group(1)), int(old.group(2))
-                    n_min, n_max = int(tl_match.group(1)), int(tl_match.group(2))
-                    if abs(n_min - old_min) <= old_min * 0.5 and abs(n_max - old_max) <= old_max * 0.5:
-                        context.timeline = new_tl
-                        print(f"DEBUG: Updated timeline: {context.timeline}")
-                    else:
-                        print(f"DEBUG: Rejected unreasonable timeline: {new_tl}")
-                else:
-                    context.timeline = new_tl
-                    print(f"DEBUG: Found timeline: {context.timeline}")
-            else:
-                context.timeline = new_tl
-                print(f"DEBUG: Found timeline: {context.timeline}")
+        # ------------------------------------------------------------------
+        #  FEATURE KEYWORDS
+        # ------------------------------------------------------------------
+        for feat in ["appliances", "countertops", "cabinets", "flooring",
+                     "backsplash", "island", "sink", "lighting"]:
+            if feat in q_lower or feat in r_lower:
+                if feat not in context.specific_features:
+                    context.specific_features.append(feat)
+                    print(f"DEBUG: Added feature '{feat}'")
 
-        # ---- feature extraction -----------------------------------------
-        for feature in [
-            "appliances", "countertops", "cabinets", "flooring",
-            "backsplash", "island", "sink", "lighting"
-        ]:
-            if feature in q_lower or feature in r_lower:
-                if feature not in context.specific_features:
-                    context.specific_features.append(feature)
-                    print(f"DEBUG: Added feature: {feature}")
-
-        # ---- conversation summary ---------------------------------------
+        # ------------------------------------------------------------------
+        #  CONVERSATION SUMMARY
+        # ------------------------------------------------------------------
         if context.project_type and context.location:
             context.conversation_summary = (
                 f"Discussing {context.project_type} remodel in {context.location}. "
@@ -260,7 +260,9 @@ class ContextManager:
         self.save_context(session_id, context)
         return context
 
-    # ─── quick consistency checker (price / timeline) ────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    #  Consistency checker (price / timeline)
+    # ──────────────────────────────────────────────────────────────────────
     def validate_response_consistency(
         self, response: str, context: ConversationContext
     ) -> Dict[str, Any]:
@@ -283,13 +285,16 @@ class ContextManager:
             tl_match = re.search(r"(\d+)\s*(?:to|-)\s*(\d+)\s*weeks?", response.lower())
             if tl_match and f"{tl_match.group(1)}-{tl_match.group(2)} weeks" != context.timeline:
                 issues.append(
-                    {"type": "timeline_inconsistency", "found": f'{tl_match.group(1)}-{tl_match.group(2)} weeks',
+                    {"type": "timeline_inconsistency",
+                     "found": f'{tl_match.group(1)}-{tl_match.group(2)} weeks',
                      "expected": context.timeline}
                 )
 
         return {"is_consistent": len(issues) == 0, "issues": issues}
 
-    # ─── helper: produce a one-liner context prompt for the LLM ───────────
+    # ──────────────────────────────────────────────────────────────────────
+    #  Helper: one-liner context prompt for the LLM
+    # ──────────────────────────────────────────────────────────────────────
     def get_context_prompt(self, context: ConversationContext) -> str:
         parts = []
 
@@ -312,29 +317,30 @@ class ContextManager:
             return prompt
         return ""
 
-    # ─── helper: system prompt fed to the LLM at chain creation ──────────
+    # ──────────────────────────────────────────────────────────────────────
+    #  System prompt for the LLM
+    # ──────────────────────────────────────────────────────────────────────
     def get_system_prompt(self, session_id: str) -> str:
         ctx = self.get_or_create_context(session_id)
 
-        base_prompt = """You are an expert construction cost estimator for RemodelAI, specializing in home remodeling projects in California, especially San Diego and Los Angeles.
-
-Your expertise includes:
-- Providing accurate cost estimates for remodeling projects
-- Understanding California building codes and regulations
-- Giving timeline estimates for projects
-- Recommending materials and design options
-- Explaining the construction and permitting process
-
-When providing estimates, always give a range (low-high) and explain the factors that affect cost. Be specific about San Diego and Los Angeles market conditions.
-
-Only provide assistance for projects in San Diego and Los Angeles, as we don't have accurate data for other locations.
-
-Always be respectful, professional, and helpful. Avoid asking for information the user has already provided.
-"""
+        base_prompt = (
+            "You are an expert construction cost estimator for RemodelAI, specializing in "
+            "home remodeling projects in California, especially San Diego and Los Angeles.\n\n"
+            "Your expertise includes:\n"
+            "- Providing accurate cost estimates for remodeling projects\n"
+            "- Understanding California building codes and regulations\n"
+            "- Giving timeline estimates for projects\n"
+            "- Recommending materials and design options\n"
+            "- Explaining the construction and permitting process\n\n"
+            "When providing estimates, always give a range (low-high) and explain the factors that affect cost. "
+            "Be specific about San Diego and Los Angeles market conditions.\n\n"
+            "Only provide assistance for projects in San Diego and Los Angeles, as we don't have accurate data for other locations.\n\n"
+            "Always be respectful, professional, and helpful. Avoid asking for information the user has already provided."
+        )
 
         if ctx.conversation_summary:
             system_prompt = (
-                f"{base_prompt}\nCONVERSATION CONTEXT:\n{ctx.conversation_summary}\n\n"
+                f"{base_prompt}\n\nCONVERSATION CONTEXT:\n{ctx.conversation_summary}\n\n"
                 "IMPORTANT: Use this context to avoid re-asking for known details."
             )
         else:
