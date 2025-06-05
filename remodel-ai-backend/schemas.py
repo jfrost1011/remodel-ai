@@ -30,6 +30,10 @@ class ChatRequest(BaseModel):
     content: str
     role: str = "user"
     session_id: Optional[str] = None
+    image_analysis: Optional[str] = None
+    image_url: Optional[str] = None
+    has_image: Optional[bool] = False
+    image_base64: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -66,10 +70,10 @@ class ProjectDetails(BaseModel):
     @classmethod
     def validate_city(cls, v: str) -> str:
         """
-        Accept “San Diego”, “Los Angeles”, their abbreviations “SD” / “LA”,
-        **or** any alias present in CITY_MAPPINGS (e.g. “Chula Vista”,
-        “West Hills”, “LA County”, etc.).  Always return the canonical
-        “San Diego” or “Los Angeles”.
+        Accept "San Diego", "Los Angeles", their abbreviations "SD" / "LA",
+        **or** any alias present in CITY_MAPPINGS (e.g. "Chula Vista",
+        "West Hills", "LA County", etc.).  Always return the canonical
+        "San Diego" or "Los Angeles".
         """
         if not v:
             raise ValueError("City is required")

@@ -5,6 +5,7 @@ export async function POST(request: Request) {
     console.log("Chat API received:", body)
     // Get the backend URL from environment variable or default to localhost:8000
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    
     // Forward the request to the backend API - note the trailing slash
     const response = await fetch(`${backendUrl}/api/v1/chat/`, {
       method: "POST",
@@ -13,10 +14,15 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify(body),
     })
+    
+    const responseText = await response.text()
+    console.log(`Backend response:`, response.status, responseText.substring(0, 200))
+    
     if (!response.ok) {
-      throw new Error(`Backend responded with status: ${response.status}`)
+      throw new Error(`Backend responded with status: ${response.status} - ${responseText}`)
     }
-    const data = await response.json()
+    
+    const data = JSON.parse(responseText)
     return NextResponse.json(data)
   } catch (error) {
     console.error("Error processing chat request:", error)
