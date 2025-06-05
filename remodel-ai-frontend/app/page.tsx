@@ -6,7 +6,7 @@ import { ChatInterface } from "@/components/chat-interface"
 import { ProjectDetailsForm } from "@/components/project-details-form"
 import { AboutModal } from "@/components/about-modal"
 import { EstimateReport } from "@/components/estimate-report"
-import { sendMessage, getEstimate } from "@/lib/api"
+import { sendMessage, getEstimate, analyzeImage } from "@/lib/api"
 import { Footer } from "@/components/footer"
 import { ApiError } from "@/components/api-error"
 import { useAuth } from "@/components/auth-provider"
@@ -16,6 +16,7 @@ interface Message {
   id: string
   role: "user" | "assistant"
   content: string
+  imageUrl?: string
 }
 
 // Define the ProjectDetails type
@@ -105,46 +106,113 @@ export default function Home() {
     setApiError(null)
   }
 
-  const handleSendMessage = async (message: string) => {
-    if (!message.trim()) return
-
-    // Add user message to chat
+  const handleSendMessage = async (message: string, imageData?: { url: string; base64: string }) => {
+    if (!message.trim() && !imageData) return
+    
+    console.log('handleSendMessage called with:', { 
+      hasMessage: !!message, 
+      hasImage: !!imageData,
+      messagePreview: message?.substring(0, 50) 
+    });
+    
+    // Add user message to chat (with image if provided)
     const newUserMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: message,
+      content: message || "Uploaded an image for analysis",
+      imageUrl: imageData?.url, // Add image URL to message if present
     }
-
     setMessages((prev) => [...prev, newUserMessage])
     setIsLoading(true)
     setApiError(null)
-
+    
     try {
       // Get access token if authenticated
       const accessToken = isAuthenticated ? await getAccessToken() : null
-
-      // Send message to API with sessionId
-      const { response, estimateData, sessionId: newSessionId } = await sendMessage(
-        message,
-        (costBreakdown?.total ?? 0) > 0 ? projectDetails : undefined,
-        accessToken,
-        sessionId
-      )
-
-      // Update sessionId if we get a new one (first message)
-      if (newSessionId && !sessionId) {
-        setSessionId(newSessionId)
+      
+      let response: string
+      let estimateData: any
+      let currentSessionId: string | undefined = sessionId // Use existing sessionId
+      
+      // Check if we have an image to analyze
+      if (imageData) {
+        console.log('Processing image upload...');
+        console.log('Current sessionId before image analysis:', currentSessionId);
+        
+        // First, analyze the image - FIXED: Pass currentSessionId
+        const imageAnalysis = await analyzeImage(imageData.base64, currentSessionId)
+        console.log('Image analysis received:', imageAnalysis);
+        
+        // Use the session ID from image analysis if we don't have one
+        const imageSessionId = imageAnalysis.sessionId;
+        if (!currentSessionId && imageSessionId) {
+          currentSessionId = imageSessionId;
+          setSessionId(currentSessionId); // Update state immediately
+          console.log('Updated currentSessionId to:', currentSessionId);
+        }
+        
+        // FIXED: Create a more contextual message
+        // Count images based on what WE'VE uploaded in this session
+        const imageCount = messages.filter(m => 
+          m.role === 'user' && 
+          m.imageUrl
+        ).length;
+        
+        console.log('Frontend image count:', {
+          messagesLength: messages.length,
+          imageCount: imageCount,
+          userMessages: messages.filter(m => m.role === 'user').map(m => m.content)
+        });
+        const messageToSend = `Here's ${imageCount > 0 ? 'another image' : 'an image'} for you to look at.`;
+        console.log('Message to send:', messageToSend);
+        
+        // Send the message with the full image analysis
+        const result = await sendMessage(
+          messageToSend,
+          (costBreakdown?.total ?? 0) > 0 ? projectDetails : undefined,
+          accessToken,
+          currentSessionId,
+          imageAnalysis.analysis,  // Send the full analysis
+          undefined,
+          imageData.base64
+        )
+        
+        response = result.response
+        estimateData = result.estimateData
+        
+        // Update session ID if returned
+        if (result.sessionId && !sessionId) {
+          setSessionId(result.sessionId)
+        }
+      } else {
+        // Regular text message without image
+        console.log('Processing text message...');
+        const result = await sendMessage(
+          message,
+          (costBreakdown?.total ?? 0) > 0 ? projectDetails : undefined,
+          accessToken,
+          currentSessionId
+        )
+        
+        response = result.response
+        estimateData = result.estimateData
+        
+        // Update session ID if returned
+        if (result.sessionId && !sessionId) {
+          setSessionId(result.sessionId)
+        }
       }
-
+      
+      console.log('AI response received:', response?.substring(0, 100));
+      
       // Add AI response to chat
       const newAiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: response,
       }
-
       setMessages((prev) => [...prev, newAiMessage])
-
+      
       // If the API returned estimate data, update the state
       if (estimateData) {
         setCostBreakdown(estimateData.costBreakdown)
@@ -153,8 +221,9 @@ export default function Home() {
         setConfidence(estimateData.confidence)
       }
     } catch (error) {
-      // Set API error state
-      setApiError("Failed to get response from the server. Please try again.")
+      // Set API error state with more specific error message
+      const errorMessage = error instanceof Error ? error.message : "Failed to get response from the server";
+      setApiError(errorMessage)
       console.error("Error sending message:", error)
     } finally {
       setIsLoading(false)
@@ -189,8 +258,9 @@ export default function Home() {
 
       setMessages((prev) => [...prev, estimateMessage])
     } catch (error) {
-      // Set API error state
-      setApiError("Failed to get estimate from the server. Please try again.")
+      // Set API error state with more specific error message
+      const errorMessage = error instanceof Error ? error.message : "Failed to get estimate from the server";
+      setApiError(errorMessage)
       console.error("Error getting estimate:", error)
     } finally {
       setIsLoading(false)

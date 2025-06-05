@@ -13,13 +13,13 @@ interface Message {
   id: string
   role: "user" | "assistant"
   content: string
-  image?: string // Add image support
+  imageUrl?: string // Updated to match page.tsx
 }
 
 interface ChatInterfaceProps {
   messages: Message[]
   isLoading: boolean
-  onSendMessage: (message: string, image?: string) => void
+  onSendMessage: (message: string, imageData?: { url: string; base64: string }) => void
   onProjectDetailsClick: () => void
   onViewEstimateReport: () => void
   showEstimateButton: boolean
@@ -114,7 +114,12 @@ export function ChatInterface({
     if ((input.trim() || uploadedImage) && !isSending) {
       setIsSending(true)
       try {
-        await onSendMessage(input || "Uploaded an image for analysis", uploadedImage || undefined)
+        const imageData = uploadedImage ? {
+          url: uploadedImage,
+          base64: uploadedImage
+        } : undefined
+        
+        await onSendMessage(input || "Uploaded an image for analysis", imageData)
         setInput("")
         setUploadedImage(null)
         setShowImageUpload(false)
@@ -146,12 +151,16 @@ export function ChatInterface({
 
   // Check for triggers to show image upload
   useEffect(() => {
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.role === 'assistant' && 
-        (lastMessage.content.toLowerCase().includes('upload') || 
-         lastMessage.content.toLowerCase().includes('photo'))) {
-      setShowImageUpload(true)
-    }
+    // COMMENTED OUT: This was causing unwanted upload prompts
+    // const lastMessage = messages[messages.length - 1]
+    // if (lastMessage?.role === 'assistant' && 
+    //     (lastMessage.content.toLowerCase().includes('upload') || 
+    //      lastMessage.content.toLowerCase().includes('photo'))) {
+    //   setShowImageUpload(true)
+    // }
+    
+    // Explicitly prevent upload prompts from triggering automatically
+    setShowImageUpload(false)
   }, [messages])
 
   // Scroll to bottom when messages change
@@ -185,9 +194,9 @@ export function ChatInterface({
                   : "bg-gray-100 text-gray-800"
               )}
             >
-              {message.image && (
+              {message.imageUrl && (
                 <img 
-                  src={message.image} 
+                  src={message.imageUrl} 
                   alt="Uploaded" 
                   className="max-w-full h-auto rounded mb-2"
                   style={{ maxHeight: '200px' }}
